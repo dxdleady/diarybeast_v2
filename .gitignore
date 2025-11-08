@@ -54,3 +54,12 @@ prisma/migrations
 
 *storybook.log
 storybook-static
+
+# Migration and testing files (root level)
+# All .md files in root directory (migration docs, test reports, etc.)
+/*.md
+
+# Testing scripts
+test-*.sh
+verify-*.sh
+*.test.sh
