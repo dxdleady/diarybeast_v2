@@ -46,6 +46,18 @@ function getAdminKeypair(): Ed25519Keypair | null {
   }
 }
 
+/**
+ * Get admin address from admin keypair
+ * Used for sponsored transactions and Walrus send_object_to parameter
+ */
+export function getAdminAddress(): string {
+  const adminKeypair = getAdminKeypair();
+  if (!adminKeypair) {
+    throw new Error('Admin keypair not available. SUI_ADMIN_PRIVATE_KEY not set.');
+  }
+  return adminKeypair.toSuiAddress();
+}
+
 export function getSuiClient(): SuiClient {
   const network = process.env.NEXT_PUBLIC_SUI_NETWORK || 'testnet';
   return new SuiClient({ url: getFullnodeUrl(network as 'testnet' | 'mainnet') });

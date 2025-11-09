@@ -107,11 +107,41 @@ export async function POST(req: NextRequest) {
 
     // Decrypt entries
     const encryptionKey = getEncryptionKey(userAddress);
-    const decryptedEntries = entries.map(
-      (entry: { date: Date; encryptedContent: string; wordCount: number }) => ({
-        date: entry.date.toISOString().split('T')[0],
-        content: decryptContent(entry.encryptedContent, encryptionKey),
-        wordCount: entry.wordCount,
+    // Retrieve entries - some may be in Walrus, some in PostgreSQL
+    const { retrieveEntry } = await import('@/lib/entries/walrus-storage');
+
+    const decryptedEntries = await Promise.all(
+      entries.map(async (entry) => {
+        let content: string;
+
+        // If entry is stored in Walrus, retrieve it
+        if (entry.storageType === 'walrus' && entry.walrusBlobId) {
+          try {
+            const walrusEntry = await retrieveEntry(prisma, entry.id);
+            if (walrusEntry) {
+              // Content from Walrus is encrypted, decrypt it
+              content = decryptContent(walrusEntry.content, encryptionKey);
+            } else {
+              throw new Error(`Failed to retrieve entry ${entry.id} from Walrus`);
+            }
+          } catch (error) {
+            console.error(`Failed to retrieve entry ${entry.id} from Walrus:`, error);
+            throw new Error(
+              `Failed to retrieve entry ${entry.id} from Walrus: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+        } else if (entry.encryptedContent) {
+          // Legacy: decrypt from PostgreSQL
+          content = decryptContent(entry.encryptedContent, encryptionKey);
+        } else {
+          throw new Error(`Entry ${entry.id} has no content (neither Walrus nor PostgreSQL)`);
+        }
+
+        return {
+          date: entry.date.toISOString().split('T')[0],
+          content,
+          wordCount: entry.wordCount,
+        };
       })
     );
 
