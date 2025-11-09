@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Pet } from './Pet';
 import { formatLastActive } from '@/lib/gamification/lifeSystem';
-import { StreakCalendar } from './StreakCalendar';
 import { getNextMilestone } from '@/lib/gamification/streakRewards';
 import { useUserStore } from '@/lib/stores/userStore';
 import { useCurrentAccount } from '@mysten/dapp-kit';
@@ -318,11 +317,6 @@ export function RightSidebar({ entries = [], onStatsChange }: RightSidebarProps)
                 </div>
               )}
             </div>
-
-            {/* Streak Calendar */}
-            {userData && (
-              <StreakCalendar entries={entries} currentStreak={userData.currentStreak} />
-            )}
           </div>
         </div>
 

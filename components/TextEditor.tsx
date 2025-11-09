@@ -174,29 +174,39 @@ export function TextEditor({
             type="button"
             onClick={isRecording ? stopRecording : startRecording}
             disabled={isTranscribing}
-            className={`px-3 py-1.5 rounded text-sm transition-all font-mono ${
+            className={`px-4 py-2 rounded-lg text-sm transition-all font-mono relative ${
               isRecording
-                ? 'bg-error/20 hover:bg-error/30 border border-error text-error animate-pulse'
+                ? 'bg-error/30 hover:bg-error/40 border-2 border-error text-error animate-pulse shadow-[0_0_15px_rgba(255,23,68,0.5)]'
                 : isTranscribing
                   ? 'bg-bg-lcd/50 border border-inactive text-disabled cursor-not-allowed'
-                  : 'bg-bg-lcd/50 hover:bg-primary/10 border border-primary/20 hover:border-primary/40 text-primary'
+                  : 'bg-gradient-to-r from-accent/20 to-primary/20 hover:from-accent/30 hover:to-primary/30 border-2 border-primary/60 hover:border-primary text-primary shadow-[0_0_10px_rgba(0,229,255,0.4)] hover:shadow-[0_0_20px_rgba(0,229,255,0.6)]'
             }`}
             title={
-              isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'
+              isRecording
+                ? 'Stop recording (click to stop)'
+                : isTranscribing
+                  ? 'Transcribing...'
+                  : 'Voice input - Record audio in English and convert to text'
             }
           >
-            {isTranscribing ? '[⏳]' : isRecording ? '[⏹️]' : '[🎤]'}
+            <span className="flex items-center gap-2">
+              {isTranscribing ? '⏳' : isRecording ? '⏹️' : '🎤'}
+              {!isRecording && !isTranscribing && <span className="text-xs">Voice</span>}
+            </span>
+            {!isRecording && !isTranscribing && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full animate-pulse"></span>
+            )}
           </button>
 
           {/* Recording indicator */}
           {isRecording && (
-            <span className="text-xs text-error flex items-center gap-1 animate-pulse font-mono">
-              Recording...
+            <span className="text-xs text-error flex items-center gap-1 animate-pulse font-mono font-bold">
+              🔴 Recording...
             </span>
           )}
           {isTranscribing && (
             <span className="text-xs text-primary flex items-center gap-1 font-mono">
-              Transcribing...
+              ⏳ Transcribing...
             </span>
           )}
         </div>
@@ -232,8 +242,17 @@ export function TextEditor({
 
       {/* Hint and Action Row */}
       <div className="mt-4 space-y-2">
-        <div className="text-xs text-primary/50 font-mono">
-          [TIP: Use **bold**, *italic*, or - lists | Click 🎤 for voice input]
+        <div className="flex items-start gap-2 p-2 bg-primary/5 border border-primary/20 rounded text-xs font-mono">
+          <span className="text-primary/60">💡</span>
+          <div className="flex-1 space-y-1">
+            <div className="text-primary/70">
+              <strong>Formatting:</strong> Use **bold**, *italic*, or - lists
+            </div>
+            <div className="text-accent/80">
+              <strong>Voice Input:</strong> Click the 🎤 button to record audio in English and
+              convert to text automatically
+            </div>
+          </div>
         </div>
         <div className="flex justify-between items-center">
           {wordCount !== undefined && (

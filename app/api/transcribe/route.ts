@@ -1,13 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
-
-function getGroqClient() {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error('GROQ_API_KEY environment variable is not set');
-  }
-  return new Groq({ apiKey });
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +9,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
+    // Lazy import Groq to avoid build-time errors
+    const Groq = (await import('groq-sdk')).default;
+
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error: 'Transcription service unavailable',
+          details:
+            'GROQ_API_KEY environment variable is not set. Please configure Groq API key in .env.local',
+        },
+        { status: 503 }
+      );
+    }
+
+    const groq = new Groq({ apiKey });
+
     // Convert File to format Groq SDK accepts
     const arrayBuffer = await audioFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -27,11 +35,10 @@ export async function POST(req: NextRequest) {
       type: audioFile.type,
     });
 
-    const groq = getGroqClient();
     const transcription = await groq.audio.transcriptions.create({
       file: file,
       model: 'whisper-large-v3',
-      language: 'en', // Can be changed to 'ru' for Russian or removed for auto-detect
+      language: 'en',
       response_format: 'json',
     });
 
@@ -40,7 +47,7 @@ export async function POST(req: NextRequest) {
       success: true,
     });
   } catch (error) {
-    console.error('Transcription error');
+    console.error('[transcribe] Error:', error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       {
         error: 'Failed to transcribe',

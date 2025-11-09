@@ -14,6 +14,7 @@ import { WeeklySummaryModal } from '@/components/WeeklySummaryModal';
 import { GamificationModal } from '@/components/GamificationModal';
 import { useGamification } from '@/lib/contexts/GamificationContext';
 import { useUserStore } from '@/lib/stores/userStore';
+import { StreakCalendar } from '@/components/StreakCalendar';
 
 export default function Diary() {
   const currentAccount = useCurrentAccount();
@@ -216,18 +217,27 @@ export default function Diary() {
           ) : (
             <div className="h-full pt-4">
               <div className="w-full px-8">
-                <div className="mb-6 text-center">
-                  <h1 className="text-4xl font-display font-bold mb-2 text-primary drop-shadow-[0_0_10px_rgba(0,229,255,0.3)]">
-                    Today&apos;s Entry
-                  </h1>
-                  <p className="text-primary/60 font-mono text-sm">
-                    {new Date().toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
+                <div className="mb-6 flex items-start gap-6 pr-40">
+                  <div>
+                    <h1 className="text-4xl font-display font-bold mb-2 text-primary drop-shadow-[0_0_10px_rgba(0,229,255,0.3)]">
+                      Today&apos;s Entry
+                    </h1>
+                    <p className="text-primary/60 font-mono text-sm">
+                      {new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+
+                  {/* Streak Calendar - Last 7 Days - Positioned to avoid DailyTimer */}
+                  {userData && (
+                    <div className="flex-shrink-0 mt-1 ml-auto">
+                      <StreakCalendar entries={entries} currentStreak={userData.currentStreak} />
+                    </div>
+                  )}
                 </div>
 
                 <TextEditor

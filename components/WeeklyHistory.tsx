@@ -103,7 +103,6 @@ function formatWeekLabel(start: Date, end: Date, isCurrentWeek: boolean): string
 function formatEntryDate(date: string): string {
   const d = new Date(date);
   return d.toLocaleDateString('en-US', {
-    weekday: 'short',
     month: 'short',
     day: 'numeric',
   });
@@ -396,9 +395,13 @@ export function WeeklyHistory({
         <h2 className="text-lg font-mono font-semibold text-white">History</h2>
         <button
           onClick={() => setIsHistoryCollapsed(!isHistoryCollapsed)}
-          className="text-primary hover:text-primary/80 transition-all"
+          className="px-3 py-2 bg-gradient-to-r from-accent/20 to-primary/20 hover:from-accent/30 hover:to-primary/30 border-2 border-primary/60 hover:border-primary rounded-lg text-primary hover:shadow-[0_0_10px_rgba(0,229,255,0.4)] transition-all flex items-center gap-2"
+          title={isHistoryCollapsed ? 'Expand history to view all entries' : 'Collapse history'}
         >
-          <span className="text-xl">{isHistoryCollapsed ? '▶' : '▼'}</span>
+          <span className="text-lg font-bold">{isHistoryCollapsed ? '▶' : '▼'}</span>
+          <span className="text-xs font-mono hidden sm:inline">
+            {isHistoryCollapsed ? 'Show' : 'Hide'}
+          </span>
         </button>
       </div>
 
@@ -431,87 +434,81 @@ export function WeeklyHistory({
 
                   {/* Generate Summary Button */}
                   {week.entries.length > 0 && (
-                    <div className="px-3 pb-2">
+                    <div className="px-3 pb-2 space-y-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleGenerateSummary(week);
                         }}
                         disabled={generatingWeek === week.weekLabel || userBalance < 50}
-                        className="w-full btn-primary px-3 py-2 rounded-lg text-xs font-mono font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                        className={`w-full px-4 py-3 rounded-lg text-xs font-mono font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all border-2 ${
+                          userBalance >= 50 && generatingWeek !== week.weekLabel
+                            ? 'bg-gradient-to-r from-accent/30 via-primary/30 to-accent/30 hover:from-accent/40 hover:via-primary/40 hover:to-accent/40 border-primary/60 hover:border-primary shadow-[0_0_20px_rgba(0,229,255,0.4)] hover:shadow-[0_0_25px_rgba(0,229,255,0.6)] text-white'
+                            : 'bg-bg-lcd/30 border-primary/20 text-primary/50'
+                        }`}
+                        title={
+                          userBalance < 50
+                            ? `You need 50 DIARY tokens to generate a summary. You currently have ${userBalance} tokens.`
+                            : '🤖 AI Summary - Get intelligent analysis of your week: emotions, insights, trends, and personalized recommendations. Costs 50 DIARY tokens.'
+                        }
                       >
                         {generatingWeek === week.weekLabel ? (
-                          '[ANALYZING...]'
+                          <span className="flex items-center gap-2">
+                            <span className="animate-pulse">⚡</span>
+                            <span>[ANALYZING...]</span>
+                          </span>
                         ) : (
                           <>
-                            <span>[SUMMARY -</span>
+                            <span className="text-base">🤖</span>
+                            <span>AI SUMMARY</span>
+                            <span className="px-2 py-0.5 bg-white/20 rounded text-[10px] font-bold">
+                              -50
+                            </span>
                             <img
                               src="/assets/tamagochi-coin.svg"
                               alt="DIARY"
-                              className="w-3 h-3"
+                              className="w-4 h-4"
                               style={{
                                 filter:
                                   'brightness(0) saturate(100%) invert(80%) sepia(48%) saturate(1000%) hue-rotate(2deg) brightness(104%) contrast(101%)',
                               }}
                             />
-                            <span>50]</span>
                           </>
                         )}
                       </button>
+                      {userBalance >= 50 && week.entries.length > 0 && (
+                        <div className="text-xs text-accent/80 font-mono px-2 py-1 bg-accent/10 border border-accent/30 rounded text-center">
+                          💡 Get AI-powered analysis: emotions, insights & trends
+                        </div>
+                      )}
+                      {userBalance < 50 && (
+                        <div className="text-xs text-warning/80 font-mono px-2 py-1 bg-warning/10 border border-warning/20 rounded text-center">
+                          ⚠️ Need {50 - userBalance} more DIARY tokens to generate summary
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
                 {isExpanded && (
                   <div className="ml-6 mt-2 space-y-2">
-                    {/* Week Grid View */}
-                    <div className="grid grid-cols-7 gap-1 mb-2">
-                      {Array.from({ length: 7 }).map((_, dayIndex) => {
-                        const currentDay = new Date(week.startDate);
-                        currentDay.setDate(currentDay.getDate() + dayIndex);
-
-                        const hasEntry = week.entries.some((entry) => {
-                          const entryDate = new Date(entry.date);
-                          return entryDate.toDateString() === currentDay.toDateString();
-                        });
-
-                        const dayLabel = ['M', 'T', 'W', 'T', 'F', 'S', 'S'][dayIndex];
-                        const isFuture = currentDay > new Date();
-
-                        return (
-                          <div
-                            key={dayIndex}
-                            className={`aspect-square flex flex-col items-center justify-center rounded text-xs font-mono border ${
-                              hasEntry
-                                ? 'bg-success/20 text-success border-success/40 font-semibold drop-shadow-[0_0_4px_rgba(57,255,20,0.4)]'
-                                : isFuture
-                                  ? 'bg-bg-lcd/30 text-primary/30 border-primary/10'
-                                  : 'bg-bg-lcd/30 text-primary/50 border-primary/20'
-                            }`}
-                            title={currentDay.toLocaleDateString()}
-                          >
-                            <div>{dayLabel}</div>
-                            <div className="text-xs">{hasEntry ? '✓' : currentDay.getDate()}</div>
+                    {/* Entry List - Scrollable */}
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                      {week.entries.map((entry) => (
+                        <div
+                          key={entry.id}
+                          onClick={() => onEntryClick(entry)}
+                          className="p-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20 cursor-pointer transition-all"
+                        >
+                          <div className="text-xs text-primary font-mono">
+                            {formatEntryDate(entry.date)}
                           </div>
-                        );
-                      })}
+                          <div className="text-xs text-primary/50 mt-0.5 font-mono">
+                            {entry.wordCount} words
+                          </div>
+                        </div>
+                      ))}
                     </div>
-
-                    {/* Entry List */}
-                    {week.entries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        onClick={() => onEntryClick(entry)}
-                        className="p-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20 cursor-pointer transition-all"
-                      >
-                        <div className="text-xs text-primary font-mono">
-                          {formatEntryDate(entry.date)}
-                        </div>
-                        <div className="text-xs text-primary/50 mt-0.5 font-mono">
-                          {entry.wordCount} words
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 )}
               </div>
