@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { usePathname } from 'next/navigation';
 import { didCrossMidnight } from '@/lib/gamification/lifeSystem';
 
@@ -43,7 +43,8 @@ export interface UseLifeCheckReturn {
  * ```
  */
 export function useLifeCheck(): UseLifeCheckReturn {
-  const { address, isConnected } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const pathname = usePathname();
 
   const [isChecking, setIsChecking] = useState(false);
@@ -58,7 +59,7 @@ export function useLifeCheck(): UseLifeCheckReturn {
   }, []);
 
   const checkLives = useCallback(async () => {
-    if (!address || !isConnected || isChecking) {
+    if (!address || isChecking) {
       return;
     }
 
@@ -87,7 +88,9 @@ export function useLifeCheck(): UseLifeCheckReturn {
         if (res.status === 404) {
           return;
         }
-        console.error('Life check failed:', res.statusText);
+        // Only log error if it's not a 404 (user not found is expected before authentication)
+        const errorText = res.statusText || `HTTP ${res.status}`;
+        console.warn('Life check failed:', errorText);
         return;
       }
 
@@ -109,25 +112,25 @@ export function useLifeCheck(): UseLifeCheckReturn {
     } finally {
       setIsChecking(false);
     }
-  }, [address, isConnected, isChecking]);
+  }, [address, isChecking]);
 
   // Check on mount (initial load/login)
   useEffect(() => {
-    if (address && isConnected) {
+    if (address) {
       checkLives();
     }
-  }, [address, isConnected]); // Only run when wallet connects
+  }, [address, checkLives]); // Only run when wallet connects
 
   // Check on route change
   useEffect(() => {
-    if (address && isConnected && pathname) {
+    if (address && pathname) {
       checkLives();
     }
-  }, [pathname]); // Only run on pathname change
+  }, [pathname, address, checkLives]); // Only run on pathname change
 
   // Interval check for midnight crossing
   useEffect(() => {
-    if (!address || !isConnected) {
+    if (!address) {
       return;
     }
 
@@ -143,7 +146,7 @@ export function useLifeCheck(): UseLifeCheckReturn {
     }, 60 * 1000); // Every 1 minute
 
     return () => clearInterval(intervalId);
-  }, [address, isConnected, checkLives]);
+  }, [address, checkLives]);
 
   return {
     checkLives,

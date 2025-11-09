@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,11 +6,25 @@ export async function POST(req: NextRequest) {
     const audioFile = formData.get('audio') as File;
 
     if (!audioFile) {
+      return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
+    }
+
+    // Lazy import Groq to avoid build-time errors
+    const Groq = (await import('groq-sdk')).default;
+
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
-        { error: 'No audio file provided' },
-        { status: 400 }
+        {
+          error: 'Transcription service unavailable',
+          details:
+            'GROQ_API_KEY environment variable is not set. Please configure Groq API key in .env.local',
+        },
+        { status: 503 }
       );
     }
+
+    const groq = new Groq({ apiKey });
 
     // Convert File to format Groq SDK accepts
     const arrayBuffer = await audioFile.arrayBuffer();
@@ -27,20 +38,20 @@ export async function POST(req: NextRequest) {
     const transcription = await groq.audio.transcriptions.create({
       file: file,
       model: 'whisper-large-v3',
-      language: 'en', // Can be changed to 'ru' for Russian or removed for auto-detect
+      language: 'en',
       response_format: 'json',
     });
 
     return NextResponse.json({
       text: transcription.text,
-      success: true
+      success: true,
     });
   } catch (error) {
-    console.error('Transcription error');
+    console.error('[transcribe] Error:', error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       {
         error: 'Failed to transcribe',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

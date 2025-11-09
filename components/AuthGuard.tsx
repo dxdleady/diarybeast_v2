@@ -1,6 +1,6 @@
 'use client';
 
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -9,7 +9,8 @@ import { useRouter, usePathname } from 'next/navigation';
  * and handles logout when user switches wallets
  */
 export function AuthGuard() {
-  const { address, isConnected } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const router = useRouter();
   const pathname = usePathname();
   const prevAddressRef = useRef<string | undefined>(undefined);
@@ -38,7 +39,7 @@ export function AuthGuard() {
 
       prevAddressRef.current = currentAddress;
     }
-  }, [address, isConnected, router, pathname]);
+  }, [address, router, pathname]);
 
   return null;
 }

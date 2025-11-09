@@ -1,12 +1,10 @@
 'use client';
 
-import { OnchainKitProvider } from '@coinbase/onchainkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { base, baseSepolia } from 'wagmi/chains';
-import { WagmiProvider, createConfig, http, useAccount, useReconnect } from 'wagmi';
-import { coinbaseWallet, injected } from 'wagmi/connectors';
-import { ReactNode, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { SuiClientProvider, WalletProvider } from '@mysten/dapp-kit';
+import { ReactNode } from 'react';
+import { networkConfig } from '@/lib/sui/config';
+import '@mysten/dapp-kit/dist/index.css';
 import { EncryptionKeyProvider } from '@/lib/EncryptionKeyContext';
 import { LifeCheckWrapper } from '@/components/LifeCheckWrapper';
 import { MusicProvider } from '@/lib/contexts/MusicContext';
@@ -16,61 +14,24 @@ import { GamificationProvider } from '@/lib/contexts/GamificationContext';
 import { BottomNavOverlay } from '@/components/BottomNavOverlay';
 import { AuthGuard } from '@/components/AuthGuard';
 
-const config = createConfig({
-  chains: [baseSepolia, base],
-  connectors: [
-    coinbaseWallet({
-      appName: 'DiaryBeast',
-      preference: 'smartWalletOnly',
-    }),
-    injected({
-      shimDisconnect: true,
-    }),
-  ],
-  transports: {
-    [baseSepolia.id]: http(),
-    [base.id]: http(),
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+    },
   },
-  ssr: true,
 });
-
-const queryClient = new QueryClient();
-
-/**
- * Smart reconnect component - only reconnects on protected routes
- */
-function SmartReconnect() {
-  const pathname = usePathname();
-  const { isConnected } = useAccount();
-  const { reconnect } = useReconnect();
-
-  useEffect(() => {
-    // Protected routes that should auto-reconnect wallet
-    const protectedRoutes = ['/diary', '/shop', '/profile', '/insights', '/info'];
-    const isProtectedRoute = protectedRoutes.some((route) => pathname?.startsWith(route));
-
-    // If on protected route and not connected, try to reconnect
-    if (isProtectedRoute && !isConnected) {
-      reconnect();
-    }
-  }, [pathname, isConnected, reconnect]);
-
-  return null;
-}
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <WagmiProvider config={config} reconnectOnMount={false}>
-      <QueryClientProvider client={queryClient}>
-        <OnchainKitProvider
-          apiKey={process.env.NEXT_PUBLIC_ONCHAINKIT_API_KEY || undefined}
-          chain={baseSepolia}
-        >
+    <QueryClientProvider client={queryClient}>
+      <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
+        <WalletProvider autoConnect>
           <EncryptionKeyProvider>
             <MusicProvider>
               <GlobalMusicProvider>
                 <GamificationProvider>
-                  <SmartReconnect />
                   <AuthGuard />
                   <LifeCheckWrapper>{children}</LifeCheckWrapper>
                   <PawPlayer />
@@ -79,8 +40,8 @@ export function Providers({ children }: { children: ReactNode }) {
               </GlobalMusicProvider>
             </MusicProvider>
           </EncryptionKeyProvider>
-        </OnchainKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+        </WalletProvider>
+      </SuiClientProvider>
+    </QueryClientProvider>
   );
 }

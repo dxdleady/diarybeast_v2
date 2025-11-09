@@ -1,6 +1,6 @@
 'use client';
 
-import { useAccount, useSignMessage } from 'wagmi';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useEffect, useState } from 'react';
 import { encryptContent, hashContent } from '@/lib/encryption';
 import { WeeklyHistory } from '@/components/WeeklyHistory';
@@ -14,10 +14,12 @@ import { WeeklySummaryModal } from '@/components/WeeklySummaryModal';
 import { GamificationModal } from '@/components/GamificationModal';
 import { useGamification } from '@/lib/contexts/GamificationContext';
 import { useUserStore } from '@/lib/stores/userStore';
+import { StreakCalendar } from '@/components/StreakCalendar';
 
 export default function Diary() {
-  const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const { encryptionKey } = useEncryptionKey();
   const { showGamificationModal, closeGamificationModal } = useGamification();
   const { user: userData, refreshUser, initializeUser } = useUserStore();
@@ -100,9 +102,10 @@ export default function Diary() {
       // 2. Hash content
       const contentHash = hashContent(content);
 
-      // 4. Sign hash
-      const signature = await signMessageAsync({
-        message: { raw: contentHash },
+      // 4. Sign hash using Sui wallet
+      const messageBytes = new TextEncoder().encode(contentHash);
+      const signResult = await signPersonalMessage({
+        message: messageBytes,
       });
 
       // 5. Save to API
@@ -112,8 +115,9 @@ export default function Diary() {
         body: JSON.stringify({
           userAddress: address,
           encryptedContent,
-          signature,
+          signature: signResult.signature,
           contentHash,
+          messageBytes: Array.from(messageBytes),
           wordCount: content.split(/\s+/).filter(Boolean).length,
         }),
       });
@@ -213,18 +217,27 @@ export default function Diary() {
           ) : (
             <div className="h-full pt-4">
               <div className="w-full px-8">
-                <div className="mb-6 text-center">
-                  <h1 className="text-4xl font-display font-bold mb-2 text-primary drop-shadow-[0_0_10px_rgba(0,229,255,0.3)]">
-                    Today&apos;s Entry
-                  </h1>
-                  <p className="text-primary/60 font-mono text-sm">
-                    {new Date().toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
+                <div className="mb-6 flex items-start gap-6 pr-40">
+                  <div>
+                    <h1 className="text-4xl font-display font-bold mb-2 text-primary drop-shadow-[0_0_10px_rgba(0,229,255,0.3)]">
+                      Today&apos;s Entry
+                    </h1>
+                    <p className="text-primary/60 font-mono text-sm">
+                      {new Date().toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+
+                  {/* Streak Calendar - Last 7 Days - Positioned to avoid DailyTimer */}
+                  {userData && (
+                    <div className="flex-shrink-0 mt-1 ml-auto">
+                      <StreakCalendar entries={entries} currentStreak={userData.currentStreak} />
+                    </div>
+                  )}
                 </div>
 
                 <TextEditor

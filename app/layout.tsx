@@ -3,7 +3,6 @@ import { Inter, JetBrains_Mono, Chakra_Petch } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { BottomNavOverlay } from '@/components/BottomNavOverlay';
-import '@coinbase/onchainkit/styles.css';
 
 // Font configurations
 const inter = Inter({

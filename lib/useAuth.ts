@@ -1,6 +1,6 @@
 'use client';
 
-import { useAccount, useSignMessage } from 'wagmi';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -15,8 +15,9 @@ interface User {
 }
 
 export function useAuth() {
-  const { address, isConnected } = useAccount();
-  const { signMessage, data: signature, error: signError } = useSignMessage();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
+  const { mutateAsync: signPersonalMessage, isPending: isSigning } = useSignPersonalMessage();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export function useAuth() {
   const prevAddressRef = useRef<string | undefined>(undefined);
   const isAuthenticatingRef = useRef(false);
 
-  const authenticate = useCallback(() => {
+  const authenticate = useCallback(async () => {
     if (!address || isAuthenticatingRef.current) {
       return;
     }
@@ -37,88 +38,65 @@ export function useAuth() {
     const message = 'Sign this message to authenticate with DiaryBeast';
     setPendingMessage(message);
 
-    // Set timeout to reset loading if signature modal doesn't appear
-    const timeoutId = setTimeout(() => {
+    try {
+      // Sign message using Sui wallet
+      const messageBytes = new TextEncoder().encode(message);
+      const result = await signPersonalMessage({
+        message: messageBytes,
+      });
+
+      // Verify signature with backend
+      const res = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address,
+          message,
+          signature: result.signature,
+          messageBytes: Array.from(messageBytes),
+        }),
+      });
+
+      if (!res.ok) {
+        let errorMessage = 'Authentication failed';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = `HTTP ${res.status}: ${res.statusText || 'Unknown error'}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+
+      if (!data.user) {
+        throw new Error('Invalid response: user data missing');
+      }
+
+      setUser(data.user);
+      setPendingMessage(null);
+
+      // Redirect to onboarding if new user or onboarding not completed
+      if (data.isNewUser || !data.user.onboardingCompleted) {
+        router.push('/onboarding');
+      } else {
+        // Existing user with completed onboarding
+        router.push('/diary');
+      }
+    } catch (err: any) {
+      if (err.message?.includes('User rejected') || err.message?.includes('rejected')) {
+        setError('Signature rejected. Please try again.');
+      } else {
+        setError(err.message || 'Failed to sign message. Please try again.');
+      }
+      setPendingMessage(null);
+    } finally {
       isAuthenticatingRef.current = false;
       setLoading(false);
-      setPendingMessage(null);
-      setError(
-        'Wallet did not respond. Please try again or check if the signature window is open.'
-      );
-    }, 30000); // 30 seconds timeout
-
-    signMessage({ message });
-
-    // Store timeout ID to clear it if signature completes
-    (window as any).__authTimeout = timeoutId;
-  }, [address, signMessage]);
-
-  // Handle signature result
-  useEffect(() => {
-    if (!signature || !pendingMessage || !address) return;
-
-    // Clear timeout if signature received
-    if ((window as any).__authTimeout) {
-      clearTimeout((window as any).__authTimeout);
-      (window as any).__authTimeout = null;
     }
-
-    const verifySignature = async () => {
-      try {
-        const res = await fetch('/api/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, message: pendingMessage, signature }),
-        });
-
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || 'Authentication failed');
-        }
-
-        const data = await res.json();
-        setUser(data.user);
-        setPendingMessage(null);
-
-        // Redirect to onboarding if new user or onboarding not completed
-        if (data.isNewUser || !data.user.onboardingCompleted) {
-          router.push('/onboarding');
-        } else {
-          // Existing user with completed onboarding
-          router.push('/diary');
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to authenticate. Please try again.');
-        setPendingMessage(null);
-      } finally {
-        isAuthenticatingRef.current = false;
-        setLoading(false);
-      }
-    };
-
-    verifySignature();
-  }, [signature, pendingMessage, address, router]);
-
-  // Handle signature error
-  useEffect(() => {
-    if (!signError) return;
-
-    // Clear timeout if error occurred
-    if ((window as any).__authTimeout) {
-      clearTimeout((window as any).__authTimeout);
-      (window as any).__authTimeout = null;
-    }
-
-    if (signError.message?.includes('User rejected') || (signError as any).code === 4001) {
-      setError('Signature rejected. Please try again.');
-    } else {
-      setError(signError.message || 'Failed to sign message. Please try again.');
-    }
-
-    isAuthenticatingRef.current = false;
-    setLoading(false);
-    setPendingMessage(null);
-  }, [signError]);
+  }, [address, signPersonalMessage, router]);
 
   // Reset states when address changes (logout is handled by AuthGuard globally)
   useEffect(() => {
@@ -129,15 +107,16 @@ export function useAuth() {
       isAuthenticatingRef.current = false;
       setError(null);
       setPendingMessage(null);
+      setUser(null); // Clear user when address changes
       prevAddressRef.current = currentAddress;
     }
   }, [address]);
 
   return {
     user,
-    loading,
+    loading: loading || isSigning,
     error,
-    isAuthenticated: !!user && isConnected,
+    isAuthenticated: !!user && !!address,
     authenticate,
   };
 }

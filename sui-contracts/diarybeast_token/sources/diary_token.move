@@ -53,22 +53,27 @@ fun init(witness: DIARY_TOKEN, ctx: &mut tx_context::TxContext) {
         id: sui::object::new(ctx)
     };
 
-    // Transfer treasury cap and admin cap to deployer
-    sui::transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+    // Make TreasuryCap a shared object so users can burn their tokens in user-initiated transactions
+    // This allows sponsored transactions where user is sender and sponsor pays for gas
+    sui::transfer::public_share_object(treasury_cap);
+    
+    // Transfer admin cap to deployer (TreasuryCap is now shared, so no transfer needed)
     sui::transfer::public_transfer(admin_cap, tx_context::sender(ctx));
 }
 
 // ===== Public Functions =====
 
 /// Mint new tokens to a user
-/// Only callable by admin with TreasuryCap
+/// Only callable by admin with AdminCap (TreasuryCap is shared, so we need AdminCap for authorization)
 /// 
 /// # Arguments:
-/// - `treasury_cap`: TreasuryCap for minting tokens
+/// - `_admin_cap`: Admin capability (for authorization)
+/// - `treasury_cap`: TreasuryCap for minting tokens (shared object)
 /// - `amount`: Amount of tokens to mint (in smallest unit)
 /// - `recipient`: Address to receive tokens
 /// - `ctx`: Transaction context
 public entry fun mint_reward(
+    _admin_cap: &AdminCap,
     treasury_cap: &mut TreasuryCap<DIARY_TOKEN>,
     amount: u64,
     recipient: address,
@@ -110,20 +115,21 @@ public entry fun burn_from(
 }
 
 /// User can burn their own tokens by sending coins to this function
-/// This function burns the coins using the TreasuryCap
+/// This function burns the coins using the TreasuryCap (shared object)
 /// 
-/// Note: In Sui, users need TreasuryCap to burn coins.
-/// This function should be called via a programmable transaction where
-/// admin provides TreasuryCap and user provides coins.
+/// Note: TreasuryCap is a shared object, so users can call this function
+/// in user-initiated transactions without requiring admin signature.
+/// This enables sponsored transactions where user is sender and sponsor pays for gas.
 /// 
 /// # Arguments:
-/// - `treasury_cap`: TreasuryCap (must be passed by admin in a programmable transaction)
+/// - `treasury_cap`: TreasuryCap (shared object, accessible to all users)
 /// - `user_coins`: User's coins to burn
 public entry fun burn(
     treasury_cap: &mut TreasuryCap<DIARY_TOKEN>,
     user_coins: Coin<DIARY_TOKEN>,
 ) {
     // Burn the coins using TreasuryCap
+    // TreasuryCap is shared, so any user can call this function
     coin::burn(treasury_cap, user_coins);
 }
 
@@ -173,7 +179,9 @@ public fun init_for_testing(ctx: &mut tx_context::TxContext) {
         id: sui::object::new(ctx)
     };
     
-    // Transfer to sender (for test_scenario)
-    sui::transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+    // Make TreasuryCap shared for testing (to match production)
+    sui::transfer::public_share_object(treasury_cap);
+    
+    // Transfer admin cap to sender (for test_scenario)
     sui::transfer::public_transfer(admin_cap, tx_context::sender(ctx));
 }
