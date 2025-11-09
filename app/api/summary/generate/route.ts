@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getEncryptionKey, decryptContent } from '@/lib/encryption';
-import { burnTokens } from '@/lib/blockchain';
+import {
+  createUserBurnTransaction,
+  sponsorTransaction,
+  getTokenConfig,
+} from '@/lib/sui/sponsored-transactions';
+import { getUserCoins, getUserTokenBalance } from '@/lib/sui/token';
+import { getSuiClient } from '@/lib/sui/sponsored-transactions';
 
 const SUMMARY_COST = 50;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -26,7 +32,17 @@ interface AnalysisResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userAddress, weekStart, weekEnd } = await req.json();
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      return NextResponse.json(
+        { error: 'Invalid request body', details: 'Request body must be valid JSON' },
+        { status: 400 }
+      );
+    }
+
+    const { userAddress, weekStart, weekEnd } = requestBody;
 
     if (!userAddress || !weekStart || !weekEnd) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -64,71 +80,169 @@ export async function POST(req: NextRequest) {
     }
 
     // Get entries for the week
+    const weekStartDate = new Date(weekStart);
+    const weekEndDate = new Date(weekEnd);
+    weekEndDate.setHours(23, 59, 59, 999);
+
     const entries = await prisma.entry.findMany({
       where: {
         userId: user.id,
         date: {
-          gte: new Date(weekStart),
-          lte: new Date(weekEnd),
+          gte: weekStartDate,
+          lte: weekEndDate,
         },
       },
       orderBy: { date: 'asc' },
     });
 
     if (entries.length === 0) {
-      return NextResponse.json({ error: 'No entries found for this week' }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'No entries found for this week',
+          message: 'Please write some diary entries for this week before generating a summary.',
+        },
+        { status: 400 }
+      );
     }
 
     // Decrypt entries
     const encryptionKey = getEncryptionKey(userAddress);
-    const decryptedEntries = entries.map((entry) => ({
-      date: entry.date.toISOString().split('T')[0],
-      content: decryptContent(entry.encryptedContent, encryptionKey),
-      wordCount: entry.wordCount,
-    }));
+    const decryptedEntries = entries.map(
+      (entry: { date: Date; encryptedContent: string; wordCount: number }) => ({
+        date: entry.date.toISOString().split('T')[0],
+        content: decryptContent(entry.encryptedContent, encryptionKey),
+        wordCount: entry.wordCount,
+      })
+    );
 
-    // Analyze with AI
-    const analysis = await analyzeWeek(decryptedEntries);
-
-    // Burn tokens on blockchain
-    let txHash: string;
+    let analysis;
     try {
-      txHash = await burnTokens(userAddress, SUMMARY_COST);
-    } catch (error) {
-      console.error('Token burn failed:', error);
-      return NextResponse.json({ error: 'Failed to burn tokens on blockchain' }, { status: 500 });
+      analysis = await analyzeWeek(decryptedEntries);
+    } catch (analysisError) {
+      return NextResponse.json(
+        {
+          error: 'AI analysis failed',
+          details: analysisError instanceof Error ? analysisError.message : 'Unknown error',
+        },
+        { status: 500 }
+      );
     }
 
-    // Deduct cost and create summary in a transaction
-    const [summary, updatedUser] = await prisma.$transaction([
-      prisma.weeklySummary.create({
-        data: {
-          userId: user.id,
-          weekStart: new Date(weekStart),
-          weekEnd: new Date(weekEnd),
-          emotions: analysis.emotions as any,
-          summary: analysis.summary,
-          insights: analysis.insights,
-          trend: analysis.trend,
+    const { packageId, treasuryCapId } = getTokenConfig();
+    const client = getSuiClient();
+
+    const userCoins = await getUserCoins(userAddress, packageId);
+    if (userCoins.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'No tokens on blockchain',
+          details:
+            'User has tokens in database but not on blockchain. Tokens may not have been minted yet.',
+          databaseBalance: user.coinsBalance,
+          onChainBalance: 0,
         },
-      }),
-      prisma.user.update({
-        where: { id: user.id },
-        data: { coinsBalance: user.coinsBalance - SUMMARY_COST },
-      }),
-    ]);
+        { status: 400 }
+      );
+    }
+
+    let userCoinId: string | null = null;
+    for (const coinId of userCoins) {
+      try {
+        const coinObject = await client.getObject({
+          id: coinId,
+          options: { showOwner: true, showContent: true },
+        });
+
+        if (coinObject.data?.owner) {
+          const owner = (coinObject.data.owner as any).AddressOwner;
+          if (owner?.toLowerCase() === userAddress.toLowerCase()) {
+            if (coinObject.data?.content && 'fields' in coinObject.data.content) {
+              const fields = coinObject.data.content.fields as any;
+              const balance = parseInt(fields.balance || '0', 10);
+              const balanceInTokens = balance / 10 ** 9;
+
+              if (balanceInTokens >= SUMMARY_COST) {
+                userCoinId = coinId;
+                break;
+              }
+            }
+          }
+        }
+      } catch (coinError) {
+        // Skip invalid coins
+      }
+    }
+
+    if (!userCoinId) {
+      const onChainBalance = await getUserTokenBalance(userAddress, packageId);
+      return NextResponse.json(
+        {
+          error: 'No valid coins found',
+          details: `User has ${onChainBalance} tokens on-chain, but no coin object with sufficient balance (${SUMMARY_COST}) found.`,
+          databaseBalance: user.coinsBalance,
+          onChainBalance,
+          required: SUMMARY_COST,
+        },
+        { status: 400 }
+      );
+    }
+
+    const onChainBalance = await getUserTokenBalance(userAddress, packageId);
+    if (onChainBalance < SUMMARY_COST) {
+      return NextResponse.json(
+        {
+          error: 'Insufficient balance on blockchain',
+          details: `User has ${onChainBalance} tokens on blockchain, but needs ${SUMMARY_COST}`,
+          databaseBalance: user.coinsBalance,
+          onChainBalance,
+          required: SUMMARY_COST,
+        },
+        { status: 400 }
+      );
+    }
+
+    const userTx = createUserBurnTransaction(
+      packageId,
+      treasuryCapId,
+      userCoinId,
+      SUMMARY_COST,
+      userAddress
+    );
+
+    const kindBytes = await userTx.build({ client, onlyTransactionKind: true });
+
+    let transactionBytes: string;
+    let sponsorSignature: string;
+
+    try {
+      const sponsored = await sponsorTransaction(kindBytes, userAddress);
+      transactionBytes = sponsored.transactionBytes;
+      sponsorSignature = sponsored.sponsorSignature;
+    } catch (sponsorError) {
+      return NextResponse.json(
+        {
+          error: 'Failed to sponsor transaction',
+          details: sponsorError instanceof Error ? sponsorError.message : 'Unknown error',
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      summary: {
-        id: summary.id,
-        emotions: summary.emotions,
-        summary: summary.summary,
-        insights: summary.insights,
-        trend: summary.trend,
+      requiresSignature: true,
+      sponsoredTransaction: {
+        transactionBytes: transactionBytes, // Already base64 string from sponsorTransaction
+        sponsorSignature,
       },
-      newBalance: updatedUser.coinsBalance,
-      txHash, // Include blockchain transaction hash
+      analysis: {
+        emotions: analysis.emotions,
+        summary: analysis.summary,
+        insights: analysis.insights,
+        trend: analysis.trend,
+      },
+      cost: SUMMARY_COST,
+      message: 'Transaction sponsored. Sign with user wallet to complete.',
     });
   } catch (error) {
     console.error('Summary generation error:', error);
@@ -145,6 +259,15 @@ export async function POST(req: NextRequest) {
 async function analyzeWeek(
   entries: Array<{ date: string; content: string; wordCount: number }>
 ): Promise<AnalysisResult> {
+  // Check API key at runtime (not at module level)
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    console.error('[analyzeWeek] ERROR: OPENROUTER_API_KEY is not set in environment variables');
+    throw new Error(
+      'OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in environment variables.'
+    );
+  }
+
   const entriesText = entries
     .map((e) => `Date: ${e.date}\nContent: ${e.content}\n---`)
     .join('\n\n');
@@ -193,7 +316,7 @@ Respond in this exact JSON format:
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'HTTP-Referer': 'https://diarybeast.com',
       'X-Title': 'DiaryBeast',
     },
@@ -210,19 +333,51 @@ Respond in this exact JSON format:
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    console.error('OpenRouter API error:', response.status, errorData);
-    throw new Error(`OpenRouter API error: ${response.statusText} - ${JSON.stringify(errorData)}`);
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch {
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+    }
+    throw new Error(`OpenRouter API error: ${response.statusText}`);
   }
 
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch (parseError) {
+    throw new Error('Invalid OpenRouter response format: not valid JSON');
+  }
 
   if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error('Invalid OpenRouter response format');
+    throw new Error('Invalid OpenRouter response format: missing choices or message');
   }
 
-  const content = data.choices[0].message.content;
-  const analysis: AnalysisResult = JSON.parse(content);
+  let content = data.choices[0].message.content;
+
+  // Strip markdown code blocks if present (OpenRouter sometimes wraps JSON in ```json ... ```)
+  content = content.trim();
+  if (content.startsWith('```')) {
+    // Remove opening ```json or ```
+    const lines = content.split('\n');
+    if (lines[0].startsWith('```')) {
+      lines.shift(); // Remove first line
+    }
+    // Remove closing ```
+    if (lines[lines.length - 1].trim() === '```') {
+      lines.pop(); // Remove last line
+    }
+    content = lines.join('\n').trim();
+  }
+
+  let analysis: AnalysisResult;
+  try {
+    analysis = JSON.parse(content) as AnalysisResult;
+  } catch (parseError) {
+    throw new Error(
+      `Invalid AI response format: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`
+    );
+  }
 
   return analysis;
 }

@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount } from 'wagmi';
+import {
+  useCurrentAccount,
+  useCurrentWallet,
+  useSuiClientContext,
+  useSuiClient,
+} from '@mysten/dapp-kit';
+import { TransactionBlock } from '@mysten/sui.js/transactions';
+import { fromB64 } from '@mysten/sui.js/utils';
 import { useUserStore } from '@/lib/stores/userStore';
 
 interface Entry {
@@ -109,7 +116,8 @@ export function WeeklyHistory({
   userBalance = 0,
   onOpenGamification,
 }: WeeklyHistoryProps) {
-  const { address } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const { user, updateBalance, refreshUser } = useUserStore();
   const balance = user?.coinsBalance ?? userBalance;
   const weekGroups = groupEntriesByWeek(entries);
@@ -131,6 +139,9 @@ export function WeeklyHistory({
     });
   };
 
+  const { currentWallet } = useCurrentWallet();
+  const { network } = useSuiClientContext(); // Get network for chain identifier
+
   const handleGenerateSummary = async (week: WeekGroup) => {
     if (!address || balance < 50) {
       alert('You need 50 DIARY tokens to generate a summary');
@@ -139,6 +150,7 @@ export function WeeklyHistory({
 
     setGeneratingWeek(week.weekLabel);
     try {
+      // Step 1: Create sponsored transaction and get analysis
       const res = await fetch('/api/summary/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,33 +161,189 @@ export function WeeklyHistory({
         }),
       });
 
-      const data = await res.json();
+      // Try to parse JSON response
+      let data;
+      try {
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          // If response is not JSON, it's probably an HTML error page
+          console.error('Failed to parse response as JSON. Response:', text.substring(0, 500));
+          throw new Error(
+            `Server returned non-JSON response (status ${res.status}). This usually indicates a server error.`
+          );
+        }
+      } catch (error) {
+        console.error('Error reading response:', error);
+        throw new Error(error instanceof Error ? error.message : 'Failed to read server response');
+      }
 
       if (!res.ok) {
         console.error('Summary generation failed:', { status: res.status, data });
-        throw new Error(data.error || 'Failed to generate summary');
+        // Handle specific error cases
+        if (data.error === 'No entries found for this week') {
+          alert('No diary entries found for this week. Please write some entries first!');
+          return;
+        }
+        if (
+          data.error === 'Insufficient balance' ||
+          data.error === 'Insufficient balance on blockchain'
+        ) {
+          alert(
+            `Insufficient balance. You need ${data.required || 50} DIARY tokens, but you have ${data.current || data.onChainBalance || balance}.`
+          );
+          return;
+        }
+        if (data.error === 'No tokens on blockchain') {
+          alert(
+            `No tokens found on blockchain. ${data.details || 'Tokens may not have been minted yet.'}`
+          );
+          return;
+        }
+        throw new Error(
+          data.error || data.details || `Failed to generate summary (status ${res.status})`
+        );
       }
 
-      // Update balance in store immediately
-      if (data.newBalance !== undefined) {
-        updateBalance(data.newBalance);
+      if (!data.requiresSignature || !data.sponsoredTransaction) {
+        throw new Error('Invalid response: sponsored transaction required');
       }
 
-      // Also refresh full user data to ensure everything is in sync
+      // Step 2: Sign the sponsored transaction
+      const { transactionBytes, sponsorSignature } = data.sponsoredTransaction;
+
+      if (!currentWallet || !address) {
+        throw new Error('Wallet not connected');
+      }
+
+      // EXACT scallop-io approach (from src/shinami-sponsored-tx/index.ts, line 79-81):
+      // 1. sponsorTxn.txBytes is base64 string from sponsor
+      // 2. this.signTxn(TransactionBlock.from(sponsorTxn.txBytes)) - sign the restored TransactionBlock
+      // 3. Execute with sponsorTxn.txBytes (original base64 string)
+      //
+      // Scallop-io's signTxn uses keypair.signTransactionBlock() internally
+      // We need to sign the bytes directly using wallet's signTransactionBlock
+      // But wallet expects TransactionBlock or bytes, so we restore it first
+
+      // EXACT scallop-io approach:
+      // In scallop-io's signTxn: it accepts TransactionBlock, then calls build() to get bytes, then signs bytes
+      // Key insight: we must sign the EXACT same bytes that the sponsor signed
+      //
+      // Problem: If we pass TransactionBlock to wallet, wallet might rebuild it, changing the bytes
+      // Solution: Pass the bytes directly (Uint8Array) to the wallet
+      //
+      // However, Sui wallet standard requires TransactionBlock object or bytes in specific format
+      // Let's try passing bytes directly as Uint8Array
+
+      if (!currentWallet?.features['sui:signTransactionBlock']) {
+        throw new Error('Wallet does not support signTransactionBlock');
+      }
+
+      const chain = network === 'mainnet' ? 'sui:mainnet' : 'sui:testnet';
+
+      // Step 2: User signs the TransactionData
+      // According to Sui documentation on sponsored transactions:
+      // - User receives TransactionData (with GasData) and sponsor Signature from sponsor
+      // - User verifies the transaction and signs the same TransactionData
+      // - User must sign because they own objects used in the transaction (userCoinId)
+      //
+      // Restore TransactionBlock from base64 string to sign it
+      // TransactionBlock.from() preserves all transaction data including GasData.owner
+      const txBlock = TransactionBlock.from(transactionBytes); // Restore TransactionData from base64 string
+
+      // Sign TransactionData as user (sender in user-initiated transactions)
+      // The wallet will sign the TransactionData, verifying that:
+      // - TransactionData.sender matches user's address
+      // - User owns the objects used in the transaction (userCoinId after split)
+      const signResult = await (
+        currentWallet.features['sui:signTransactionBlock'] as any
+      ).signTransactionBlock({
+        transactionBlock: txBlock, // TransactionData with GasData (restored from sponsor bytes)
+        account: currentWallet.accounts[0],
+        chain,
+      });
+
+      const userSignature = signResult.signature;
+
+      // Step 3: Execute dual-signed transaction
+      // Send both signatures (user and sponsor) to execute the transaction
+      // Sui will validate that both signatures are correct and all objects are owned by the correct signers
+      const executeRes = await fetch('/api/sponsored/burn/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionBytes: transactionBytes, // Original sponsor bytes (base64) with gasOwner=admin
+          userSignature,
+          sponsorSignature,
+        }),
+      });
+
+      const executeData = await executeRes.json();
+
+      if (!executeRes.ok) {
+        console.error('Transaction execution failed:', {
+          status: executeRes.status,
+          data: executeData,
+        });
+        throw new Error(executeData.error || 'Failed to execute transaction');
+      }
+
+      if (!executeData.digest) {
+        throw new Error('Transaction executed but no digest returned');
+      }
+
+      // Step 4: Complete summary generation
+      const completeRes = await fetch('/api/summary/generate/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: address,
+          weekStart: week.startDate.toISOString(),
+          weekEnd: week.endDate.toISOString(),
+          analysis: data.analysis,
+          txHash: executeData.digest,
+        }),
+      });
+
+      const completeData = await completeRes.json();
+
+      if (!completeRes.ok) {
+        console.error('Summary completion failed:', {
+          status: completeRes.status,
+          data: completeData,
+        });
+        throw new Error(completeData.error || 'Failed to complete summary generation');
+      }
+
+      // Update balance in store (this will trigger rewards reload in RightSidebar)
+      if (completeData.newBalance !== undefined) {
+        updateBalance(completeData.newBalance);
+      }
+
+      // Refresh full user data to ensure everything is in sync
+      // This will also trigger rewards reload in RightSidebar due to coinsBalance dependency
       if (address) {
         await refreshUser(address);
       }
 
       if (onSummaryGenerated) {
         onSummaryGenerated({
-          ...data.summary,
+          ...completeData.summary,
           weekLabel: week.weekLabel,
-          newBalance: data.newBalance,
+          newBalance: completeData.newBalance,
         });
       }
     } catch (error: any) {
       console.error('Summary generation failed:', error);
-      alert(error.message || 'Failed to generate summary');
+      // Only show alert if error message is meaningful (not already handled above)
+      if (
+        error.message &&
+        !error.message.includes('No entries found') &&
+        !error.message.includes('Insufficient balance')
+      ) {
+        alert(error.message || 'Failed to generate summary');
+      }
     } finally {
       setGeneratingWeek(null);
     }

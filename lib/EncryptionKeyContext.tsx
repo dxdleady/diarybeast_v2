@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, ReactNode, useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { getEncryptionKey } from './encryption';
 
 interface EncryptionKeyContextType {
@@ -9,9 +9,7 @@ interface EncryptionKeyContextType {
   isLoading: boolean;
 }
 
-const EncryptionKeyContext = createContext<EncryptionKeyContextType | undefined>(
-  undefined
-);
+const EncryptionKeyContext = createContext<EncryptionKeyContextType | undefined>(undefined);
 
 /**
  * Simplified encryption context for DiaryBeast
@@ -19,17 +17,15 @@ const EncryptionKeyContext = createContext<EncryptionKeyContextType | undefined>
  * No signatures required, works across all devices
  */
 export function EncryptionKeyProvider({ children }: { children: ReactNode }) {
-  const { address, isConnected } = useAccount();
+  const currentAccount = useCurrentAccount();
 
   const encryptionKey = useMemo(() => {
-    if (!address || !isConnected) return null;
-    return getEncryptionKey(address);
-  }, [address, isConnected]);
+    if (!currentAccount?.address) return null;
+    return getEncryptionKey(currentAccount.address);
+  }, [currentAccount?.address]);
 
   return (
-    <EncryptionKeyContext.Provider
-      value={{ encryptionKey, isLoading: false }}
-    >
+    <EncryptionKeyContext.Provider value={{ encryptionKey, isLoading: false }}>
       {children}
     </EncryptionKeyContext.Provider>
   );

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAccount, useDisconnect } from 'wagmi';
+import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 
 interface MenuItem {
   href?: string;
@@ -14,11 +14,11 @@ interface MenuItem {
 export function BottomNavOverlay() {
   const pathname = usePathname();
   const router = useRouter();
-  const { isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
+  const currentAccount = useCurrentAccount();
+  const { mutate: disconnect } = useDisconnectWallet();
 
   // Don't show menu on auth page, onboarding, or when not connected
-  if (!isConnected || pathname === '/' || pathname === '/onboarding') {
+  if (!currentAccount || pathname === '/' || pathname === '/onboarding') {
     return null;
   }
 

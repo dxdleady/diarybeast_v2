@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
 import { AsciiPet } from '@/components/AsciiPet';
 
@@ -53,7 +53,8 @@ const DIARY_GOALS = [
 ];
 
 export default function Onboarding() {
-  const { address } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [selectedAnimal, setSelectedAnimal] = useState<'cat' | 'dog' | null>(null);

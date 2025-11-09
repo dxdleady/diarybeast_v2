@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+function getGroqClient() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY environment variable is not set');
+  }
+  return new Groq({ apiKey });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,10 +15,7 @@ export async function POST(req: NextRequest) {
     const audioFile = formData.get('audio') as File;
 
     if (!audioFile) {
-      return NextResponse.json(
-        { error: 'No audio file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
     // Convert File to format Groq SDK accepts
@@ -24,6 +27,7 @@ export async function POST(req: NextRequest) {
       type: audioFile.type,
     });
 
+    const groq = getGroqClient();
     const transcription = await groq.audio.transcriptions.create({
       file: file,
       model: 'whisper-large-v3',
@@ -33,14 +37,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       text: transcription.text,
-      success: true
+      success: true,
     });
   } catch (error) {
     console.error('Transcription error');
     return NextResponse.json(
       {
         error: 'Failed to transcribe',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount, useCurrentWallet, useSuiClientContext } from '@mysten/dapp-kit';
 import { useRouter } from 'next/navigation';
 import { BottomNavOverlay } from '@/components/BottomNavOverlay';
 import { FOOD_ITEMS, CONSUMABLE_ITEMS } from '@/lib/gamification/itemsConfig';
@@ -20,8 +20,11 @@ interface ShopItem {
 type TabType = 'food' | 'consumables' | 'animals';
 
 export default function Shop() {
-  const { address } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const router = useRouter();
+  const { currentWallet } = useCurrentWallet();
+  const { network } = useSuiClientContext();
   const { user: userData, refreshUser, updateBalance, updateInventory } = useUserStore();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [purchases, setPurchases] = useState<string[]>([]);
@@ -120,7 +123,8 @@ export default function Shop() {
 
     setPurchasing(itemId);
     try {
-      const res = await fetch('/api/shop/purchase', {
+      // Step 1: Create sponsored burn transaction
+      const res = await fetch('/api/shop/purchase/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -131,25 +135,138 @@ export default function Shop() {
         }),
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        alert(`🎉 Purchased ${qty}x ${data.itemPurchased}!`);
-        // Update balance and inventory in store
-        if (data.updatedBalance !== undefined) {
-          updateBalance(data.updatedBalance);
+      let data;
+      try {
+        const text = await res.text();
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          console.error('Failed to parse response as JSON. Response:', text.substring(0, 500));
+          throw new Error(`Server returned non-JSON response (status ${res.status})`);
         }
-        if (data.inventory) {
-          updateInventory(data.inventory);
-        }
-        // Refresh full user data
-        await refreshUser(address);
-      } else {
-        alert(data.error || 'Purchase failed');
+      } catch (error) {
+        console.error('Error reading response:', error);
+        throw new Error(error instanceof Error ? error.message : 'Failed to read server response');
       }
-    } catch (error) {
+
+      if (!res.ok) {
+        console.error('Purchase creation failed:', { status: res.status, data });
+        if (
+          data.error === 'Insufficient balance' ||
+          data.error === 'Insufficient balance on blockchain'
+        ) {
+          alert(
+            `Insufficient balance. You need ${data.required || totalCost} DIARY tokens, but you have ${data.current || balance}.`
+          );
+          return;
+        }
+        throw new Error(
+          data.error ||
+            data.details ||
+            `Failed to create purchase transaction (status ${res.status})`
+        );
+      }
+
+      if (!data.requiresSignature || !data.sponsoredTransaction) {
+        throw new Error('Invalid response: sponsored transaction required');
+      }
+
+      // Step 2: User signs the TransactionData
+      const { transactionBytes, sponsorSignature } = data.sponsoredTransaction;
+
+      if (!currentWallet || !address) {
+        throw new Error('Wallet not connected');
+      }
+
+      if (!currentWallet?.features['sui:signTransactionBlock']) {
+        throw new Error('Wallet does not support signTransactionBlock');
+      }
+
+      const chain = network === 'mainnet' ? 'sui:mainnet' : 'sui:testnet';
+
+      // Restore TransactionBlock from base64 string
+      const { TransactionBlock } = await import('@mysten/sui.js/transactions');
+      const txBlock = TransactionBlock.from(transactionBytes);
+
+      // Sign TransactionData as user (sender)
+      const signResult = await (
+        currentWallet.features['sui:signTransactionBlock'] as any
+      ).signTransactionBlock({
+        transactionBlock: txBlock,
+        account: currentWallet.accounts[0],
+        chain,
+      });
+
+      const userSignature = signResult.signature;
+
+      // Step 3: Execute dual-signed transaction
+      const executeRes = await fetch('/api/sponsored/burn/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionBytes: transactionBytes,
+          userSignature,
+          sponsorSignature,
+        }),
+      });
+
+      const executeData = await executeRes.json();
+
+      if (!executeRes.ok) {
+        console.error('Transaction execution failed:', {
+          status: executeRes.status,
+          data: executeData,
+        });
+        throw new Error(executeData.error || 'Failed to execute transaction');
+      }
+
+      if (!executeData.digest) {
+        throw new Error('Transaction executed but no digest returned');
+      }
+
+      // Step 4: Complete purchase
+      const completeRes = await fetch('/api/shop/purchase/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: address,
+          itemId,
+          itemType,
+          quantity: qty,
+          txHash: executeData.digest,
+          purchaseInfo: data.purchaseInfo,
+        }),
+      });
+
+      const completeData = await completeRes.json();
+
+      if (!completeRes.ok) {
+        console.error('Purchase completion failed:', {
+          status: completeRes.status,
+          data: completeData,
+        });
+        throw new Error(completeData.error || 'Failed to complete purchase');
+      }
+
+      // Update balance and inventory in store
+      if (completeData.updatedBalance !== undefined) {
+        updateBalance(completeData.updatedBalance);
+      }
+      if (completeData.inventory) {
+        updateInventory(completeData.inventory);
+      }
+
+      // Refresh full user data
+      await refreshUser(address);
+
+      alert(
+        `🎉 Purchased ${qty}x ${completeData.itemPurchased || data.purchaseInfo?.itemName || 'item'}!`
+      );
+    } catch (error: any) {
       console.error('Purchase error:', error);
-      alert('Purchase failed');
+      if (error.message && !error.message.includes('Insufficient balance')) {
+        alert(error.message || 'Purchase failed');
+      }
     } finally {
       setPurchasing(null);
     }

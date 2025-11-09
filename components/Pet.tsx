@@ -5,7 +5,7 @@ import { getPetState, type PetState as EmotionState } from '@/lib/gamification/l
 import { AsciiPet } from './AsciiPet';
 import type { PetState as AnimationState } from '@/lib/ascii/types';
 import { usePetStore, formatCooldown } from '@/lib/stores/petStore';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useMusic } from '@/lib/contexts/MusicContext';
 import { FoodSelectModal } from './FoodSelectModal';
 
@@ -34,7 +34,8 @@ export function Pet({
   petPersonality,
   onStatsChange,
 }: PetProps) {
-  const { address } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const [emotion, setEmotion] = useState<EmotionState>('happy');
   const [actionInProgress, setActionInProgress] = useState(false);
   const [showFoodModal, setShowFoodModal] = useState(false);

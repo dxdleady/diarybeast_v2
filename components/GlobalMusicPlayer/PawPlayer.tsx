@@ -1,17 +1,17 @@
 'use client';
 
 import React from 'react';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { usePathname } from 'next/navigation';
 import { useMusicPlayerStore, type Genre as GenreType } from '@/lib/stores/musicPlayerStore';
 
 export const PawPlayer: React.FC = () => {
-  const { isConnected } = useAccount();
+  const currentAccount = useCurrentAccount();
   const pathname = usePathname();
   const { currentGenre, isPlaying, setGenre, togglePlay } = useMusicPlayerStore();
 
   // Don't show player if not connected, on home page, or during onboarding
-  if (!isConnected || pathname === '/' || pathname === '/onboarding') {
+  if (!currentAccount || pathname === '/' || pathname === '/onboarding') {
     return null;
   }
 

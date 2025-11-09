@@ -26,11 +26,12 @@ fun test_init() {
         diary_token::init_for_testing(ts::ctx(&mut scenario));
     };
 
-    // Verify admin received TreasuryCap and AdminCap
+    // Verify admin received AdminCap (TreasuryCap is now shared, not owned)
     ts::next_tx(&mut scenario, ADMIN);
     {
-        assert!(ts::has_most_recent_for_address<TreasuryCap<DIARY_TOKEN>>(ADMIN), 0);
-        assert!(ts::has_most_recent_for_address<AdminCap>(ADMIN), 1);
+        assert!(ts::has_most_recent_for_address<AdminCap>(ADMIN), 0);
+        // TreasuryCap is shared, so it's not owned by anyone
+        // We can't easily check shared objects in test_scenario, but we know it was created
     };
 
     ts::end(scenario);
@@ -48,16 +49,22 @@ fun test_mint_reward() {
     // Mint tokens to USER1
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
         
         diary_token::mint_reward(
+            &admin_cap,
             &mut treasury_cap,
             MINT_AMOUNT,
             USER1,
             ts::ctx(&mut scenario)
         );
 
-        ts::return_to_sender(&scenario, treasury_cap);
+        // Shared objects persist in scenario - no need to return
+        // AdminCap needs to be returned
+        ts::return_to_sender(&scenario, admin_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     // Verify USER1 received coins
@@ -82,16 +89,20 @@ fun test_burn_from() {
 
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
-        diary_token::mint_reward(&mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
-        ts::return_to_sender(&scenario, treasury_cap);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        diary_token::mint_reward(&admin_cap, &mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
+        // Shared objects don't need to be returned - they're not owned
+        ts::return_to_sender(&scenario, admin_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     // Burn tokens from USER1
     ts::next_tx(&mut scenario, ADMIN);
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
         
         // Get USER1's coins
         ts::next_tx(&mut scenario, USER1);
@@ -110,8 +121,8 @@ fun test_burn_from() {
         // Verify balance decreased
         assert!(diary_token::balance(&user_coins) == MINT_AMOUNT - BURN_AMOUNT, 0);
 
+        // Shared objects don't need to be returned - they're not owned
         ts::return_to_sender(&scenario, admin_cap);
-        ts::return_to_sender(&scenario, treasury_cap);
         ts::return_to_address(USER1, user_coins);
     };
 
@@ -130,16 +141,20 @@ fun test_burn_from_insufficient_balance() {
 
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
-        diary_token::mint_reward(&mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
-        ts::return_to_sender(&scenario, treasury_cap);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        diary_token::mint_reward(&admin_cap, &mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
+        // Shared objects don't need to be returned - they're not owned
+        ts::return_to_sender(&scenario, admin_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     // Try to burn more than balance
     ts::next_tx(&mut scenario, ADMIN);
     {
         let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
         
         ts::next_tx(&mut scenario, USER1);
         let mut user_coins = ts::take_from_sender<Coin<DIARY_TOKEN>>(&scenario);
@@ -155,9 +170,11 @@ fun test_burn_from_insufficient_balance() {
         );
         
         // Return objects (won't execute if function fails as expected)
+        // Shared objects don't need to be returned - they're not owned
         ts::return_to_sender(&scenario, admin_cap);
-        ts::return_to_sender(&scenario, treasury_cap);
         ts::return_to_address(USER1, user_coins);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     ts::end(scenario);
@@ -174,30 +191,32 @@ fun test_burn() {
 
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
-        diary_token::mint_reward(&mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
-        ts::return_to_sender(&scenario, treasury_cap);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        diary_token::mint_reward(&admin_cap, &mut treasury_cap, MINT_AMOUNT, USER1, ts::ctx(&mut scenario));
+        // Shared objects don't need to be returned - they're not owned
+        ts::return_to_sender(&scenario, admin_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
-    // User burns their own tokens (via programmable transaction)
-    ts::next_tx(&mut scenario, ADMIN);
+    // User burns their own tokens (now possible with shared TreasuryCap)
+    ts::next_tx(&mut scenario, USER1);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
-        
-        // Get USER1's coins
-        ts::next_tx(&mut scenario, USER1);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
         let mut user_coins = ts::take_from_sender<Coin<DIARY_TOKEN>>(&scenario);
 
         // Split coins to burn part
         let to_burn = coin::split(&mut user_coins, BURN_AMOUNT, ts::ctx(&mut scenario));
 
-        // Burn via admin (simulating programmable transaction)
-        ts::next_tx(&mut scenario, ADMIN);
+        // User can now burn directly (TreasuryCap is shared)
         diary_token::burn(&mut treasury_cap, to_burn);
 
         // Return remaining coins to USER1
+        // Shared objects don't need to be returned - they're not owned
         ts::return_to_address(USER1, user_coins);
-        ts::return_to_sender(&scenario, treasury_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     ts::end(scenario);
@@ -241,10 +260,14 @@ fun test_mint_zero_amount() {
     // Try to mint zero tokens
     ts::next_tx(&mut scenario, ADMIN);
     {
-        let mut treasury_cap = ts::take_from_sender<TreasuryCap<DIARY_TOKEN>>(&scenario);
-        diary_token::mint_reward(&mut treasury_cap, 0, USER1, ts::ctx(&mut scenario));
-        // Return treasury cap (won't execute if function fails as expected)
-        ts::return_to_sender(&scenario, treasury_cap);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_cap = ts::take_shared<TreasuryCap<DIARY_TOKEN>>(&scenario);
+        diary_token::mint_reward(&admin_cap, &mut treasury_cap, 0, USER1, ts::ctx(&mut scenario));
+        // Return objects (won't execute if function fails as expected)
+        // Shared objects don't need to be returned - they're not owned
+        ts::return_to_sender(&scenario, admin_cap);
+        // treasury_cap is shared, so it automatically persists (drop it explicitly)
+        drop(treasury_cap);
     };
 
     ts::end(scenario);

@@ -4,12 +4,13 @@ import Image from 'next/image';
 import { WalletConnect } from '@/components/WalletConnect';
 import { PetEvolution } from '@/components/PetEvolution';
 import { useAuth } from '@/lib/useAuth';
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useEffect, useState } from 'react';
 
 export default function Home() {
   const { loading, error, authenticate } = useAuth();
-  const { address, isConnected } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -18,7 +19,7 @@ export default function Home() {
 
   // Auto-authenticate when wallet connects (only once per address)
   useEffect(() => {
-    if (!mounted || !isConnected || !address) return;
+    if (!mounted || !address) return;
 
     // Check if we already tried to authenticate for this address
     const authKey = `auth_attempted_${address.toLowerCase()}`;
@@ -32,7 +33,7 @@ export default function Home() {
       }, 0);
       return () => clearTimeout(timeoutId);
     }
-  }, [mounted, isConnected, address, authenticate]);
+  }, [mounted, address, authenticate]);
 
   // Clear auth attempt flag when address changes
   useEffect(() => {

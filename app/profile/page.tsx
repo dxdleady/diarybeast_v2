@@ -1,17 +1,17 @@
 'use client';
 
-import { useAccount } from 'wagmi';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Pet } from '@/components/Pet';
 import { BottomNavOverlay } from '@/components/BottomNavOverlay';
-import { Identity, Name, Address } from '@coinbase/onchainkit/identity';
-import { base } from 'wagmi/chains';
+import { formatAddress } from '@mysten/sui.js/utils';
 
 type TabType = 'overview' | 'achievements' | 'analysis';
 
 export default function Profile() {
-  const { address } = useAccount();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
   const [userData, setUserData] = useState<any>(null);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,10 +155,10 @@ export default function Profile() {
               <h2 className="text-lg font-display font-semibold mb-4 text-primary">Wallet</h2>
               {address && (
                 <div className="flex flex-col gap-1">
-                  <Identity address={address} chain={base}>
-                    <Name className="text-lg text-primary font-mono font-bold" />
-                    <Address className="text-sm text-primary/60 font-mono" />
-                  </Identity>
+                  <div className="text-lg text-primary font-mono font-bold">
+                    {formatAddress(address)}
+                  </div>
+                  <div className="text-sm text-primary/60 font-mono">{address}</div>
                 </div>
               )}
             </div>

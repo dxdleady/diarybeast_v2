@@ -1,6 +1,6 @@
 'use client';
 
-import { useAccount, useSignMessage } from 'wagmi';
+import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useEffect, useState } from 'react';
 import { encryptContent, hashContent } from '@/lib/encryption';
 import { WeeklyHistory } from '@/components/WeeklyHistory';
@@ -16,8 +16,9 @@ import { useGamification } from '@/lib/contexts/GamificationContext';
 import { useUserStore } from '@/lib/stores/userStore';
 
 export default function Diary() {
-  const { address } = useAccount();
-  const { signMessageAsync } = useSignMessage();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const { encryptionKey } = useEncryptionKey();
   const { showGamificationModal, closeGamificationModal } = useGamification();
   const { user: userData, refreshUser, initializeUser } = useUserStore();
@@ -100,9 +101,10 @@ export default function Diary() {
       // 2. Hash content
       const contentHash = hashContent(content);
 
-      // 4. Sign hash
-      const signature = await signMessageAsync({
-        message: { raw: contentHash },
+      // 4. Sign hash using Sui wallet
+      const messageBytes = new TextEncoder().encode(contentHash);
+      const signResult = await signPersonalMessage({
+        message: messageBytes,
       });
 
       // 5. Save to API
@@ -112,8 +114,9 @@ export default function Diary() {
         body: JSON.stringify({
           userAddress: address,
           encryptedContent,
-          signature,
+          signature: signResult.signature,
           contentHash,
+          messageBytes: Array.from(messageBytes),
           wordCount: content.split(/\s+/).filter(Boolean).length,
         }),
       });
