@@ -29,10 +29,39 @@ export default function Diary() {
   const [saving, setSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<any>(null);
+  const [loadingEntry, setLoadingEntry] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successData, setSuccessData] = useState<any>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryData, setSummaryData] = useState<any>(null);
+
+  // Handle entry click - load full entry content from Walrus/PostgreSQL
+  async function handleEntryClick(entry: any) {
+    // If entry already has encryptedContent, use it directly
+    if (entry.encryptedContent) {
+      setSelectedEntry(entry);
+      return;
+    }
+
+    // Otherwise, load full entry content from API
+    setLoadingEntry(true);
+    try {
+      const response = await fetch(`/api/entries/${entry.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to load entry');
+      }
+      const data = await response.json();
+      if (data.success && data.entry) {
+        setSelectedEntry(data.entry);
+      } else {
+        console.error('Failed to load entry:', data);
+      }
+    } catch (error) {
+      console.error('Error loading entry:', error);
+    } finally {
+      setLoadingEntry(false);
+    }
+  }
 
   // Function to reload data (used by Pet component when stats change)
   async function reloadData() {
@@ -199,7 +228,7 @@ export default function Diary() {
         <div className="w-80 flex-shrink-0 overflow-hidden">
           <WeeklyHistory
             entries={entries}
-            onEntryClick={setSelectedEntry}
+            onEntryClick={handleEntryClick}
             onSummaryGenerated={handleSummaryGenerated}
             userBalance={userData?.coinsBalance || 0}
           />
@@ -212,7 +241,15 @@ export default function Diary() {
             <DailyTimer hasWrittenToday={hasWrittenToday} />
           </div>
 
-          {selectedEntry ? (
+          {loadingEntry ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="font-mono text-lg mb-4 animate-pulse text-primary">
+                  Loading entry...
+                </div>
+              </div>
+            </div>
+          ) : selectedEntry ? (
             <EntryViewer entry={selectedEntry} onBack={() => setSelectedEntry(null)} />
           ) : (
             <div className="h-full pt-4">

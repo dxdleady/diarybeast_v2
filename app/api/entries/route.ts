@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { mintTokens } from '@/lib/blockchain';
 import { restoreLives, calculateRewardMultiplier } from '@/lib/gamification/lifeSystem';
 import { calculateStreakBonus } from '@/lib/gamification/streakRewards';
+import { storeEntry } from '@/lib/entries/walrus-storage';
+import { getAdminAddress } from '@/lib/sui/sponsored-transactions';
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,17 +61,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Entry already exists for today' }, { status: 409 });
     }
 
-    // Create entry
-    const entry = await prisma.entry.create({
-      data: {
-        userId: user.id,
-        encryptedContent,
-        signature,
-        contentHash,
-        wordCount: wordCount || 0,
-        date: new Date(),
-      },
+    // Create entry using Walrus storage
+    // Store encrypted content on Walrus and metadata in PostgreSQL
+    const {
+      id: entryId,
+      blobId,
+      txDigest,
+      blobObjectId,
+    } = await storeEntry(
+      prisma,
+      user.id,
+      encryptedContent,
+      signature,
+      contentHash,
+      wordCount || 0,
+      5 // Store for 5 epochs on Walrus
+    );
+
+    // Get the created entry for response
+    const entry = await prisma.entry.findUnique({
+      where: { id: entryId },
     });
+
+    if (!entry) {
+      throw new Error('Failed to create entry');
+    }
+
+    // Get admin address for explorer link fallback
+    let adminAddress: string | null = null;
+    try {
+      adminAddress = getAdminAddress();
+    } catch {
+      // Admin address not available, will use other fallbacks
+    }
 
     // Calculate reward multiplier based on pet condition
     const { multiplier, reason: multiplierReason } = calculateRewardMultiplier(
@@ -177,6 +201,10 @@ export async function POST(req: NextRequest) {
       entry: {
         id: entry.id,
         date: entry.date,
+        blobId: entry.walrusBlobId, // Include Walrus blob ID
+        txDigest: entry.walrusTxDigest, // Include transaction digest for blockchain verification
+        storageType: entry.storageType, // Include storage type
+        adminAddress, // Include admin address for explorer link fallback
       },
       reward: {
         amount: rewardAmount,
@@ -231,9 +259,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Get admin address for explorer link fallback
+    let adminAddress: string | null = null;
+    try {
+      adminAddress = getAdminAddress();
+    } catch {
+      // Admin address not available, will use other fallbacks
+    }
+
+    // Add admin address to each entry for explorer links
+    const entriesWithAdminAddress = user.entries.map((entry) => ({
+      ...entry,
+      adminAddress,
+    }));
+
     return NextResponse.json({
-      entries: user.entries,
-      total: user.entries.length,
+      entries: entriesWithAdminAddress,
+      total: entriesWithAdminAddress.length,
     });
   } catch (error) {
     const errorMessage =

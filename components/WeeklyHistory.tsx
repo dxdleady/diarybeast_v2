@@ -10,12 +10,17 @@ import {
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { fromB64 } from '@mysten/sui.js/utils';
 import { useUserStore } from '@/lib/stores/userStore';
+import { getWalrusEntryExplorerUrl, formatTxDigest } from '@/lib/walrus/explorer';
 
 interface Entry {
   id: string;
   date: string;
   wordCount: number;
   encryptedContent: string;
+  walrusTxDigest?: string | null; // Transaction digest for blockchain verification
+  walrusBlobId?: string | null; // Blob ID for fallback
+  storageType?: string; // Storage type
+  adminAddress?: string | null; // Admin address for explorer link fallback
 }
 
 interface WeekGroup {
@@ -494,20 +499,48 @@ export function WeeklyHistory({
                   <div className="ml-6 mt-2 space-y-2">
                     {/* Entry List - Scrollable */}
                     <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-                      {week.entries.map((entry) => (
-                        <div
-                          key={entry.id}
-                          onClick={() => onEntryClick(entry)}
-                          className="p-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20 cursor-pointer transition-all"
-                        >
-                          <div className="text-xs text-primary font-mono">
-                            {formatEntryDate(entry.date)}
+                      {week.entries.map((entry) => {
+                        const explorerUrl =
+                          entry.walrusTxDigest || entry.walrusBlobId || entry.adminAddress
+                            ? getWalrusEntryExplorerUrl(
+                                entry.walrusTxDigest || null,
+                                entry.walrusBlobId || null,
+                                entry.adminAddress || null,
+                                network === 'mainnet' ? 'mainnet' : 'testnet'
+                              )
+                            : null;
+
+                        return (
+                          <div
+                            key={entry.id}
+                            onClick={() => onEntryClick(entry)}
+                            className="p-2 rounded-lg hover:bg-primary/10 border border-transparent hover:border-primary/20 cursor-pointer transition-all"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-primary font-mono">
+                                  {formatEntryDate(entry.date)}
+                                </div>
+                                <div className="text-xs text-primary/50 mt-0.5 font-mono">
+                                  {entry.wordCount} words
+                                </div>
+                              </div>
+                              {explorerUrl && entry.storageType === 'walrus' && (
+                                <a
+                                  href={explorerUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="flex-shrink-0 px-1.5 py-0.5 bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 rounded text-primary/70 hover:text-primary font-mono text-[10px] transition-all"
+                                  title="View on blockchain"
+                                >
+                                  🔗
+                                </a>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-xs text-primary/50 mt-0.5 font-mono">
-                            {entry.wordCount} words
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
