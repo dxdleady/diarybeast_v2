@@ -35,6 +35,12 @@ lerna-debug.log*
 .env
 !.env.local.example
 
+# backup files (may contain sensitive data)
+*.bak
+*.backup
+.env*.bak
+.env*.backup
+
 # vercel
 .vercel
 

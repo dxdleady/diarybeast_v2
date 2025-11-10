@@ -8,6 +8,10 @@ interface TextEditorProps {
   placeholder?: string;
   actionButton?: React.ReactNode;
   wordCount?: number;
+  // Seal encryption option
+  sealEncryptionEnabled?: boolean;
+  onSealEncryptionChange?: (enabled: boolean) => void;
+  isSealAvailable?: boolean;
 }
 
 export function TextEditor({
@@ -16,6 +20,9 @@ export function TextEditor({
   placeholder,
   actionButton,
   wordCount,
+  sealEncryptionEnabled = false,
+  onSealEncryptionChange,
+  isSealAvailable = false,
 }: TextEditorProps) {
   const [fontFamily, setFontFamily] = useState('sans');
   const [isRecording, setIsRecording] = useState(false);
@@ -81,7 +88,6 @@ export function TextEditor({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (error) {
-      console.error('Failed to start recording');
       alert('Microphone access denied. Please enable microphone permissions.');
     }
   };
@@ -116,7 +122,6 @@ export function TextEditor({
         alert('Transcription failed: ' + (data.error || 'Unknown error'));
       }
     } catch (error) {
-      console.error('Transcription error');
       alert('Failed to transcribe audio. Please try again.');
     } finally {
       setIsTranscribing(false);
@@ -254,10 +259,58 @@ export function TextEditor({
             </div>
           </div>
         </div>
-        <div className="flex justify-between items-center">
-          {wordCount !== undefined && (
-            <div className="text-xs text-primary/50 font-mono">[{wordCount} words]</div>
-          )}
+        <div className="flex justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            {wordCount !== undefined && (
+              <div className="text-xs text-primary/50 font-mono">[{wordCount} words]</div>
+            )}
+
+            {/* Seal Encryption Option - Only show if Seal is available */}
+            {isSealAvailable && onSealEncryptionChange && (
+              <div className="flex items-center gap-2 relative group">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sealEncryptionEnabled}
+                    onChange={(e) => onSealEncryptionChange(e.target.checked)}
+                    className="w-4 h-4 rounded border-2 border-primary/40 bg-transparent checked:bg-primary checked:border-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background transition-all cursor-pointer"
+                  />
+                  <span className="text-xs font-mono text-primary/70 hover:text-primary transition-colors flex items-center gap-1.5">
+                    <span>🔐</span>
+                    <span>Seal</span>
+                  </span>
+                </label>
+
+                {/* Info icon with tooltip */}
+                <div className="relative group/info">
+                  <span className="text-xs text-primary/50 hover:text-primary/70 cursor-help">
+                    ℹ️
+                  </span>
+
+                  {/* Tooltip */}
+                  <div className="absolute left-0 bottom-full mb-2 w-72 p-3 bg-bg-card border border-primary/30 rounded text-xs font-mono text-primary/80 shadow-lg opacity-0 invisible group-hover/info:opacity-100 group-hover/info:visible transition-all duration-200 z-50 pointer-events-none">
+                    <div className="space-y-2">
+                      <div>
+                        <strong className="text-primary">Threshold encryption (Seal):</strong>
+                      </div>
+                      <div className="text-primary/70 leading-relaxed">
+                        Your entry is encrypted with distributed key servers.{' '}
+                        <strong className="text-primary">Only you can decrypt it</strong> by signing
+                        with your wallet - no one else, including the server, can read it without
+                        your signature.
+                      </div>
+                      <div className="text-primary/60 text-[11px] pt-1 border-t border-primary/20">
+                        ⚠️ Stored differently in database • Excluded from AI analysis
+                      </div>
+                    </div>
+                    {/* Tooltip arrow */}
+                    <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-primary/30"></div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {actionButton && <div>{actionButton}</div>}
         </div>
       </div>

@@ -1,71 +1,73 @@
-# DiaryBeast Wiki
+# DiaryBeast Documentation
 
-Welcome to the DiaryBeast project documentation!
+Welcome to the DiaryBeast documentation! This comprehensive guide covers everything you need to know about the project, from quick start guides for hackathon judges to detailed technical documentation for developers.
 
 ## 📚 Documentation Structure
 
-### Getting Started
-- [Project Overview](./Project%20Overview.md) - High-level project description and goals
-- [Getting Started](./Getting%20Started.md) - Setup and installation guide
-- [Wallet Setup Guide](./Wallet%20Setup%20Guide.md) - How to connect wallets and get Basenames
-- [Technology Stack & Dependencies](./Technology%20Stack%20&%20Dependencies.md) - All technologies used
+### For Hackathon Judges (Quick Overview)
 
-### Core Systems
-- [Data Models & Database Schema](./Data%20Models%20&%20Database%20Schema.md) - Database structure and models
-- [Blockchain Integration](./Blockchain%20Integration/) - Smart contracts and token system
-- [Gamification System](./Gamification%20System/) - Lives, streaks, rewards
-- [Security & Encryption](./Security%20&%20Encryption/) - Data protection and privacy
+- **[Quick Start Guide](./Quick-Start.md)** - Get started in 5 minutes
+- **[Hackathon Highlights](./Hackathon-Highlights.md)** - Key features and innovations
+- **[User Benefits](./User-Benefits.md)** - Real-world value for users
+- **[Architecture Overview](./Architecture.md)** - High-level system architecture
 
-### Architecture
-- [Component Architecture](./Component%20Architecture/) - UI component structure
-- [State Management](./State%20Management/) - Global and local state patterns
-- [Routing & Navigation](./Routing%20&%20Navigation/) - App routing structure
-- [API Integration Layer](./API%20Integration%20Layer/) - All API endpoints
+### For Developers (Detailed Documentation)
 
-### UI Components
-- [UI Components Library](./UI%20Components%20Library/) - Reusable components
+#### Core Technologies
+- **[Walrus Integration](./Walrus-Integration.md)** - Decentralized storage implementation
+- **[Seal Encryption](./Seal-Encryption.md)** - Threshold-based encryption system
+- **[Sui Blockchain](./Sui-Blockchain.md)** - Smart contracts and token economy
 
+#### Setup & Development
+- **[Setup Guide](./Setup-Guide.md)** - Complete environment setup
+- **[Development Guide](./Development.md)** - Local development workflow
+- **[API Reference](./API-Reference.md)** - All API endpoints
+
+#### Migration & History
+- **[Migration Guide](./Migration.md)** - Migration from Base to Sui
 
 ## 🚀 Quick Links
 
-### For Developers
-- **Setup**: [Getting Started](./Getting%20Started.md)
-- **Architecture**: [Component Architecture](./Component%20Architecture/)
-- **API Reference**: [API Integration Layer](./API%20Integration%20Layer/)
+- **Main Contract**: `diary_token.move` - Soul-bound token contract
+  - Location: `sui-contracts/diarybeast_token/sources/diary_token.move`
+  - Package ID: Set via `NEXT_PUBLIC_SUI_PACKAGE_ID` (testnet) or `NEXT_PUBLIC_SUI_PACKAGE_ID_MAINNET` (mainnet)
+  
+- **Seal Access Policies**: `seal_policies.move` - Access control for Seal encryption
+  - Location: `sui-contracts/diarybeast_seal_policies/sources/seal_policies.move`
+  - Package ID: Set via `NEXT_PUBLIC_SEAL_PACKAGE_ID`
 
-### For Understanding the System
-- **How it works**: [Project Overview](./Project%20Overview.md)
-- **Game mechanics**: [Gamification System](./Gamification%20System/)
-- **Blockchain**: [Blockchain Integration](./Blockchain%20Integration/)
+## 🏗️ Technology Stack
 
+- **Frontend**: Next.js 15 + React 19 + Tailwind CSS
+- **Blockchain**: Sui (Move smart contracts)
+- **Storage**: Walrus (decentralized) + PostgreSQL (metadata)
+- **Encryption**: Seal (threshold-based) + crypto-js (fallback)
+- **Wallet**: @mysten/dapp-kit (Sui wallet integration)
 
-## 🔧 Environment Setup
+## 📖 Key Features
 
-Required environment variables:
-- `OWNER_PRIVATE_KEY` - Blockchain minting key
-- `NEXT_PUBLIC_DIARY_TOKEN_ADDRESS` - Token contract address
-- `DATABASE_URL` - Database connection
-- `NEXT_PUBLIC_ONCHAINKIT_API_KEY` - OnchainKit API
-- And more...
+1. **Decentralized Storage** - Diary entries stored on Walrus
+2. **Threshold Encryption** - Optional Seal encryption for maximum privacy
+3. **Sponsored Transactions** - Users don't pay gas fees
+4. **AI Analysis** - Weekly emotion analysis (excludes Seal-encrypted entries)
+5. **Gamification** - Pet system with rewards and streaks
 
-## 📖 How to Use This Wiki
+## 🔗 External Resources
 
-1. **New to the project?** Start with [Project Overview](./Project%20Overview.md)
-2. **Setting up locally?** Follow [Getting Started](./Getting%20Started.md)
-3. **Need to understand a feature?** Check the relevant system documentation
-4. **Looking for an API endpoint?** See [API Integration Layer](./API%20Integration%20Layer/)
-5. **Understanding wallets and Basenames?** See [Blockchain Integration](./Blockchain%20Integration/)
+- [Sui Documentation](https://docs.sui.io/)
+- [Walrus Documentation](https://walrus.wal.app/)
+- [Seal Documentation](https://seal-docs.wal.app/)
+- [Walrus Haulout Hackathon Handbook](https://mystenlabs.notion.site/Walrus-Haulout-Hackathon-Participant-Handbook-2886d9dcb4e980e2adc1d047a95dfef8)
 
-## 🛠️ Contributing to Documentation
+## 📝 Contributing
 
-When making changes to the codebase:
+This documentation is maintained alongside the codebase. When making changes:
+
 1. Update relevant documentation files
-2. Update this README if adding new major sections
-3. Keep documentation in sync with actual implementation
+2. Keep examples up-to-date with code changes
+3. Add migration notes for breaking changes
 
-## 📝 Documentation Standards
+---
 
-- Use clear, concise language
-- Include code examples where relevant
-- Keep files organized in appropriate directories
-- Update documentation immediately when code changes
+**Note**: This documentation is designed for the Walrus Haulout Hackathon. For production deployment, additional security and configuration considerations apply.
+

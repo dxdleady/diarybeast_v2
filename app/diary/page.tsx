@@ -3,6 +3,7 @@
 import { useCurrentAccount, useSignPersonalMessage } from '@mysten/dapp-kit';
 import { useEffect, useState } from 'react';
 import { encryptContent, hashContent } from '@/lib/encryption';
+import { hybridEncrypt, isSealAvailable } from '@/lib/seal';
 import { WeeklyHistory } from '@/components/WeeklyHistory';
 import { RightSidebar } from '@/components/RightSidebar';
 import { EntryViewer } from '@/components/EntryViewer';
@@ -34,6 +35,8 @@ export default function Diary() {
   const [successData, setSuccessData] = useState<any>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [summaryData, setSummaryData] = useState<any>(null);
+  // Seal encryption option - disabled by default, user can choose to enable it
+  const [useSealEncryption, setUseSealEncryption] = useState(false);
 
   // Handle entry click - load full entry content from Walrus/PostgreSQL
   async function handleEntryClick(entry: any) {
@@ -53,11 +56,9 @@ export default function Diary() {
       const data = await response.json();
       if (data.success && data.entry) {
         setSelectedEntry(data.entry);
-      } else {
-        console.error('Failed to load entry:', data);
       }
     } catch (error) {
-      console.error('Error loading entry:', error);
+      // Error loading entry
     } finally {
       setLoadingEntry(false);
     }
@@ -78,7 +79,7 @@ export default function Diary() {
       const entriesData = await entriesRes.json();
       setEntries(entriesData.entries || []);
     } catch (error) {
-      console.error('Failed to reload data:', error);
+      // Failed to reload data
     }
   }
 
@@ -98,7 +99,7 @@ export default function Diary() {
         const entriesData = await entriesRes.json();
         setEntries(entriesData.entries || []);
       } catch (error) {
-        console.error('Failed to load data:', error);
+        // Failed to load data
       } finally {
         setLoading(false);
       }
@@ -125,19 +126,50 @@ export default function Diary() {
     setSuccessMessage('');
 
     try {
-      // 1. Encrypt content with deterministic key
-      const encryptedContent = encryptContent(content, encryptionKey);
-
-      // 2. Hash content
+      // 1. Hash content (needed for signature and verification)
       const contentHash = hashContent(content);
 
-      // 4. Sign hash using Sui wallet
+      // 2. Sign hash using Sui wallet
       const messageBytes = new TextEncoder().encode(contentHash);
       const signResult = await signPersonalMessage({
         message: messageBytes,
       });
 
-      // 5. Save to API
+      // 3. Encrypt content using hybrid encryption (Seal if available, otherwise crypto-js)
+      let encryptedContent: string;
+      let encryptionMethod: 'crypto-js' | 'seal' = 'crypto-js';
+      let sealMetadata: any = {};
+
+      // Use Seal encryption only if user explicitly chose it AND Seal is available
+      if (useSealEncryption && isSealAvailable()) {
+        try {
+          // Use Seal encryption
+          const hybridResult = await hybridEncrypt(content, address, signResult.signature);
+          encryptedContent = hybridResult.encryptedData;
+          encryptionMethod = hybridResult.method;
+
+          // Store Seal metadata if using Seal
+          if (hybridResult.method === 'seal') {
+            sealMetadata = {
+              sealEncryptedObject: hybridResult.sealEncryptedObject,
+              sealKey: hybridResult.sealKey,
+              sealPackageId: hybridResult.sealPackageId,
+              sealId: hybridResult.sealId,
+              sealThreshold: hybridResult.sealThreshold,
+            };
+          }
+        } catch (sealError) {
+          // Fall back to crypto-js if Seal encryption fails
+          encryptedContent = encryptContent(content, encryptionKey);
+          encryptionMethod = 'crypto-js';
+        }
+      } else {
+        // Use crypto-js encryption (default method)
+        encryptedContent = encryptContent(content, encryptionKey);
+        encryptionMethod = 'crypto-js';
+      }
+
+      // 4. Save to API
       const res = await fetch('/api/entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,6 +180,8 @@ export default function Diary() {
           contentHash,
           messageBytes: Array.from(messageBytes),
           wordCount: content.split(/\s+/).filter(Boolean).length,
+          encryptionMethod, // Include encryption method
+          ...sealMetadata, // Include Seal metadata if using Seal
         }),
       });
 
@@ -183,7 +217,6 @@ export default function Diary() {
       const entriesData = await entriesRes.json();
       setEntries(entriesData.entries || []);
     } catch (error: any) {
-      console.error('Save failed:', error);
       alert(error.message || 'Failed to save entry');
     } finally {
       setSaving(false);
@@ -282,6 +315,9 @@ export default function Diary() {
                   onChange={setContent}
                   placeholder="How was your day? Write your thoughts here..."
                   wordCount={content.split(/\s+/).filter(Boolean).length}
+                  sealEncryptionEnabled={useSealEncryption}
+                  onSealEncryptionChange={setUseSealEncryption}
+                  isSealAvailable={isSealAvailable()}
                   actionButton={
                     <button
                       onClick={handleSave}

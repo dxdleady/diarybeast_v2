@@ -2,12 +2,48 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getEncryptionKey, decryptContent } from '@/lib/encryption';
 import {
+  hybridDecrypt,
+  isSealAvailable,
+  createSessionKey,
+  createSealAuthorizationTransaction,
+} from '@/lib/seal';
+import {
   createUserBurnTransaction,
   sponsorTransaction,
   getTokenConfig,
 } from '@/lib/sui/sponsored-transactions';
 import { getUserCoins, getUserTokenBalance } from '@/lib/sui/token';
 import { getSuiClient } from '@/lib/sui/sponsored-transactions';
+import { getAdminAddress } from '@/lib/sui/sponsored-transactions';
+import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
+import { fromB64 } from '@mysten/sui.js/utils';
+
+// Helper to get admin keypair (duplicated from sponsored-transactions.ts for server-side use)
+function getAdminKeypair(): Ed25519Keypair | null {
+  const privateKey = process.env.SUI_ADMIN_PRIVATE_KEY;
+  if (!privateKey) {
+    return null;
+  }
+  try {
+    // Helper to decode bech32 suiprivkey format
+    function decodeSuiprivkey(suiprivkey: string): Uint8Array {
+      const bech32 = require('bech32');
+      const decoded = bech32.bech32.decode(suiprivkey);
+      const words = decoded.words;
+      const bytes = bech32.bech32.fromWords(words);
+      return new Uint8Array(bytes.slice(0, 32));
+    }
+
+    if (privateKey.startsWith('suiprivkey1')) {
+      const secretKeyBytes = decodeSuiprivkey(privateKey);
+      return Ed25519Keypair.fromSecretKey(secretKeyBytes);
+    } else {
+      return Ed25519Keypair.fromSecretKey(fromB64(privateKey));
+    }
+  } catch (error) {
+    return null;
+  }
+}
 
 const SUMMARY_COST = 50;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -42,11 +78,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { userAddress, weekStart, weekEnd } = requestBody;
+    const { userAddress, weekStart, weekEnd, decryptedEntries } = requestBody;
 
     if (!userAddress || !weekStart || !weekEnd) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    // If decryptedEntries are provided, use them directly (client-side decryption)
+    // This allows Seal-encrypted entries to be decrypted on the client and sent to the server
+    const useClientDecryptedEntries =
+      Array.isArray(decryptedEntries) && decryptedEntries.length > 0;
 
     // Get user
     const user = await prisma.user.findUnique({
@@ -106,48 +147,230 @@ export async function POST(req: NextRequest) {
     }
 
     // Decrypt entries
-    const encryptionKey = getEncryptionKey(userAddress);
-    // Retrieve entries - some may be in Walrus, some in PostgreSQL
-    const { retrieveEntry } = await import('@/lib/entries/walrus-storage');
+    let decryptedEntriesList: Array<{ date: string; content: string; wordCount: number }>;
 
-    const decryptedEntries = await Promise.all(
-      entries.map(async (entry) => {
-        let content: string;
+    if (useClientDecryptedEntries) {
+      // Use client-decrypted entries (for Seal-encrypted entries)
+      decryptedEntriesList = decryptedEntries.map((decryptedEntry: any) => ({
+        date: decryptedEntry.date,
+        content: decryptedEntry.content,
+        wordCount: decryptedEntry.wordCount || 0,
+      }));
+    } else {
+      // Server-side decryption (for crypto-js encrypted entries or when client doesn't provide decrypted entries)
+      // NOTE: Seal-encrypted entries are excluded from AI analysis
+      // In the future: allow users to select which entries to include in analysis
+      const encryptionKey = getEncryptionKey(userAddress);
+      // Retrieve entries - some may be in Walrus, some in PostgreSQL
+      const { retrieveEntry } = await import('@/lib/entries/walrus-storage');
 
-        // If entry is stored in Walrus, retrieve it
-        if (entry.storageType === 'walrus' && entry.walrusBlobId) {
-          try {
-            const walrusEntry = await retrieveEntry(prisma, entry.id);
-            if (walrusEntry) {
-              // Content from Walrus is encrypted, decrypt it
-              content = decryptContent(walrusEntry.content, encryptionKey);
-            } else {
-              throw new Error(`Failed to retrieve entry ${entry.id} from Walrus`);
+      const decryptedEntriesResult = await Promise.all(
+        entries.map(async (entry) => {
+          let content: string;
+          let decryptionError: string | null = null;
+
+          // If entry is stored in Walrus, retrieve it
+          if (entry.storageType === 'walrus' && entry.walrusBlobId) {
+            try {
+              const walrusEntry = await retrieveEntry(prisma, entry.id);
+              if (walrusEntry) {
+                // Check encryption method
+                const encryptionMethod = walrusEntry.method || 'crypto-js';
+
+                if (encryptionMethod === 'seal') {
+                  // Seal-encrypted entries are excluded from AI analysis
+                  // Users can choose to use Seal encryption for additional privacy
+                  // In the future: allow users to select which entries to include in analysis
+                  return null;
+
+                  // FUTURE: Uncomment this code when we allow users to select which entries to include in AI analysis
+                  // This code implements server-side Seal decryption for AI analysis
+                  /*
+                // Try to decrypt with Seal (requires server-side Seal configuration)
+                if (isSealAvailable() && walrusEntry.sealEncryptedObject && walrusEntry.sealId) {
+                  try {
+                    // IMPORTANT: For server-side decryption with Seal, we need to:
+                    // 1. Create SessionKey for userAddress (identity used for encryption)
+                    // 2. Sign personal message - we'll use admin keypair since admin is authorized in access policy
+                    // 3. Use SessionKey with signed personal message for decryption
+                    
+                    console.log('[summary/generate] Attempting Seal decryption for server-side AI analysis');
+                    
+                    // Import necessary modules
+                    const { createSessionKey } = await import('@/lib/seal/session-key');
+                    const { createSealAuthorizationTransaction } = await import('@/lib/seal/transaction');
+                    const { hybridDecrypt } = await import('@/lib/seal/hybrid-encryption');
+                    const { Ed25519Keypair } = await import('@mysten/sui.js/keypairs/ed25519');
+                    const { fromB64 } = await import('@mysten/sui.js/utils');
+                    const { decodeSuiprivkey } = await import('@/lib/sui/token');
+                    
+                    // Get admin keypair from environment
+                    function getAdminKeypair(): Ed25519Keypair | null {
+                      const privateKey = process.env.SUI_ADMIN_PRIVATE_KEY;
+                      if (!privateKey) {
+                        return null;
+                      }
+                      try {
+                        if (privateKey.startsWith('suiprivkey1')) {
+                          const secretKeyBytes = decodeSuiprivkey(privateKey);
+                          return Ed25519Keypair.fromSecretKey(secretKeyBytes);
+                        } else {
+                          return Ed25519Keypair.fromSecretKey(fromB64(privateKey));
+                        }
+                      } catch (error) {
+                        console.error('[summary/generate] Error getting admin keypair:', error);
+                        return null;
+                      }
+                    }
+                    
+                    // Create SessionKey for userAddress (identity used for encryption)
+                    const sessionKey = await createSessionKey(
+                      userAddress,
+                      undefined, // mvrName - optional
+                      30, // ttlMin (30 minutes - max allowed by Seal SDK)
+                      undefined // signer - we'll sign manually below
+                    );
+                    
+                    console.log('[summary/generate] SessionKey created for userAddress:', userAddress);
+                    
+                    // Get personal message from SessionKey
+                    const personalMessage = sessionKey.getPersonalMessage();
+                    
+                    // Sign personal message using admin keypair
+                    // Note: This works because admin is authorized in the access policy
+                    // The access policy allows admin to decrypt data for users
+                    const adminKeypair = getAdminKeypair();
+                    if (!adminKeypair) {
+                      throw new Error('Admin keypair not available for signing personal message');
+                    }
+                    
+                    console.log('[summary/generate] Signing personal message with admin keypair');
+                    // Sign personal message using admin keypair
+                    // IMPORTANT: The signature will be from admin address, but SessionKey is for userAddress
+                    // This should work if the access policy allows admin to decrypt for users
+                    const signatureResult = await adminKeypair.signPersonalMessage(personalMessage);
+                    
+                    // Set signature in SessionKey
+                    // Note: This may fail validation if Seal SDK checks that signature matches SessionKey address
+                    // But if access policy allows admin, this should work
+                    try {
+                      await sessionKey.setPersonalMessageSignature(signatureResult.signature);
+                      console.log('[summary/generate] Personal message signature set in SessionKey');
+                    } catch (signatureError: any) {
+                      console.error('[summary/generate] Failed to set personal message signature:', signatureError);
+                      // If setting signature fails, try to use sealKey for direct decryption (if available)
+                      if (walrusEntry.sealKey) {
+                        console.log('[summary/generate] Trying to use sealKey for direct decryption');
+                        // TODO: Implement direct decryption using sealKey
+                        // This requires understanding the structure of encryptedObject
+                        throw new Error('Direct decryption with sealKey not yet implemented. Personal message signature validation failed.');
+                      }
+                      throw signatureError;
+                    }
+                    
+                    // Create transaction bytes for seal_approve
+                    // For server-side AI analysis, admin is the requester
+                    const adminAddress = adminKeypair.toSuiAddress();
+                    const txBytes = await createSealAuthorizationTransaction(userAddress, sessionKey, adminAddress);
+                    
+                    console.log('[summary/generate] Authorization transaction created, attempting decryption');
+                    
+                    // Decrypt using Seal
+                    console.log('[summary/generate] Decrypting Seal entry', {
+                      entryId: entry.id,
+                      sealId: walrusEntry.sealId,
+                      sealThreshold: walrusEntry.sealThreshold,
+                    });
+                    content = await hybridDecrypt({
+                      encryptedData: walrusEntry.content,
+                      method: 'seal',
+                      walletAddress: userAddress,
+                      sealEncryptedObject: walrusEntry.sealEncryptedObject,
+                      sessionKey,
+                      txBytes,
+                      sealId: walrusEntry.sealId,
+                      sealThreshold: walrusEntry.sealThreshold, // Use threshold saved during encryption
+                    });
+                    
+                    console.log('[summary/generate] Seal decryption successful');
+                  } catch (sealError: any) {
+                    console.error(`[summary/generate] Failed to decrypt Seal-encrypted entry ${entry.id}:`, sealError);
+                    console.error('[summary/generate] Seal decryption error details:', {
+                      message: sealError?.message,
+                      name: sealError?.name,
+                      stack: sealError?.stack,
+                    });
+                    
+                    // If Seal decryption fails, we cannot decrypt this entry
+                    // Skip it for AI analysis
+                    console.log(`[summary/generate] Skipping Seal-encrypted entry ${entry.id} for AI analysis due to decryption failure`);
+                    return null;
+                  }
+                } else {
+                  // Seal not configured or missing metadata - use crypto-js
+                  console.log(`[summary/generate] Entry ${entry.id} is Seal-encrypted but Seal is not configured on server, using crypto-js fallback`);
+                  content = decryptContent(walrusEntry.content, encryptionKey);
+                }
+                */
+                } else {
+                  // Use crypto-js decryption (legacy method)
+                  content = decryptContent(walrusEntry.content, encryptionKey);
+                }
+              } else {
+                throw new Error(`Failed to retrieve entry ${entry.id} from Walrus`);
+              }
+            } catch (error) {
+              throw new Error(
+                `Failed to retrieve entry ${entry.id} from Walrus: ${error instanceof Error ? error.message : String(error)}`
+              );
             }
-          } catch (error) {
-            console.error(`Failed to retrieve entry ${entry.id} from Walrus:`, error);
-            throw new Error(
-              `Failed to retrieve entry ${entry.id} from Walrus: ${error instanceof Error ? error.message : String(error)}`
-            );
+          } else if (entry.encryptedContent) {
+            // Legacy: decrypt from PostgreSQL (always uses crypto-js)
+            content = decryptContent(entry.encryptedContent, encryptionKey);
+          } else {
+            throw new Error(`Entry ${entry.id} has no content (neither Walrus nor PostgreSQL)`);
           }
-        } else if (entry.encryptedContent) {
-          // Legacy: decrypt from PostgreSQL
-          content = decryptContent(entry.encryptedContent, encryptionKey);
-        } else {
-          throw new Error(`Entry ${entry.id} has no content (neither Walrus nor PostgreSQL)`);
-        }
 
-        return {
-          date: entry.date.toISOString().split('T')[0],
-          content,
-          wordCount: entry.wordCount,
-        };
-      })
-    );
+          return {
+            date: entry.date.toISOString().split('T')[0],
+            content,
+            wordCount: entry.wordCount,
+            decryptionError, // Include error if decryption failed
+          };
+        })
+      );
+
+      // Filter out entries that failed to decrypt
+      decryptedEntriesList = decryptedEntriesResult.filter((entry) => entry !== null) as Array<{
+        date: string;
+        content: string;
+        wordCount: number;
+      }>;
+    }
+
+    // Validate that we have at least one valid entry
+    if (decryptedEntriesList.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'No valid entries found for this week',
+          message: 'All entries failed to decrypt or were skipped.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Use decryptedEntriesList for AI analysis
+    const validEntries = decryptedEntriesList;
+
+    // Warn if some entries were skipped (only for server-side decryption)
+    // Note: Seal-encrypted entries are excluded from AI analysis
+
+    // Use valid entries for AI analysis
+    const entriesForAnalysis = validEntries;
 
     let analysis;
     try {
-      analysis = await analyzeWeek(decryptedEntries);
+      analysis = await analyzeWeek(entriesForAnalysis);
     } catch (analysisError) {
       return NextResponse.json(
         {
@@ -275,7 +498,6 @@ export async function POST(req: NextRequest) {
       message: 'Transaction sponsored. Sign with user wallet to complete.',
     });
   } catch (error) {
-    console.error('Summary generation error:', error);
     return NextResponse.json(
       {
         error: 'Failed to generate summary',
@@ -292,7 +514,6 @@ async function analyzeWeek(
   // Check API key at runtime (not at module level)
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    console.error('[analyzeWeek] ERROR: OPENROUTER_API_KEY is not set in environment variables');
     throw new Error(
       'OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in environment variables.'
     );

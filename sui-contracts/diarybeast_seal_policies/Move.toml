@@ -1,0 +1,11 @@
+[package]
+name = "diarybeast_seal_policies"
+edition = "2024.beta"
+# license = "MIT"
+# authors = ["DiaryBeast Team"]
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+diarybeast = "0x0"

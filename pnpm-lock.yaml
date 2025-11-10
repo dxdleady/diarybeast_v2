@@ -11,6 +11,9 @@ importers:
       '@mysten/dapp-kit':
         specifier: ^0.19.8
         version: 0.19.8(@tanstack/react-query@5.90.2(react@19.2.0))(@types/react-dom@19.2.0(@types/react@19.2.0))(@types/react@19.2.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      '@mysten/seal':
+        specifier: ^0.9.3
+        version: 0.9.3(typescript@5.9.3)
       '@mysten/sui':
         specifier: ^1.44.0
         version: 1.44.0(typescript@5.9.3)
@@ -655,6 +658,9 @@ packages:
       '@tanstack/react-query': ^5.0.0
       react: '*'
 
+  '@mysten/seal@0.9.3':
+    resolution: {integrity: sha512-wss0JHWxhWOjxfVSTz8PLFudz7dAAG2ve+S4luVeieaf2kDVaaGo0FrnnzkDGU42CYgZUGoz+0R36DTqISDz6w==}
+
   '@mysten/slush-wallet@0.2.9':
     resolution: {integrity: sha512-as6H33DVN1xYcKTLBHRAQ2sg5txeST6llDjKwb22bikvyTTSFPLCm2dP+XijB4Tkho2e1Pe6N5Q9FpCxUKAeAQ==}
 
@@ -760,10 +766,6 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
-
-  '@noble/curves@1.9.1':
-    resolution: {integrity: sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA==}
-    engines: {node: ^14.21.3 || >=16}
 
   '@noble/curves@1.9.4':
     resolution: {integrity: sha512-2bKONnuM53lINoDrSmK8qP8W271ms7pygDhZt4SiLOoLwBtoHqeCFi6RG42V8zd3mLHuJFhU/Bmaqo4nX0/kBw==}
@@ -4581,6 +4583,17 @@ snapshots:
       - react-dom
       - typescript
 
+  '@mysten/seal@0.9.3(typescript@5.9.3)':
+    dependencies:
+      '@mysten/bcs': 1.9.2
+      '@mysten/sui': 1.44.0(typescript@5.9.3)
+      '@noble/curves': 1.9.4
+      '@noble/hashes': 1.8.0
+    transitivePeerDependencies:
+      - '@gql.tada/svelte-support'
+      - '@gql.tada/vue-support'
+      - typescript
+
   '@mysten/slush-wallet@0.2.9(typescript@5.9.3)':
     dependencies:
       '@mysten/sui': 1.44.0(typescript@5.9.3)
@@ -4737,10 +4750,6 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@15.0.3':
     optional: true
-
-  '@noble/curves@1.9.1':
-    dependencies:
-      '@noble/hashes': 1.8.0
 
   '@noble/curves@1.9.4':
     dependencies:
@@ -5168,7 +5177,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 

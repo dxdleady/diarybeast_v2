@@ -9,31 +9,25 @@ Write in your diary daily to feed and evolve your personal beast. AI analyzes yo
 - **Sponsored Transactions**: Users don't pay gas fees (admin sponsors)
 - **AI Analysis**: Weekly emotion analysis and insights
 - **Gamification**: Pet system with rewards and streaks
-- **End-to-End Encryption**: Client-side encryption for privacy
+- **End-to-End Encryption**: Client-side encryption for privacy (crypto-js by default)
+- **Optional Seal Encryption**: Enhanced privacy with threshold-based encryption (user choice)
 
 ## 📚 Documentation
 
 For detailed documentation, please visit the [docs](/docs) folder:
 
-- [Project Overview](/docs/Project%20Overview.md)
-- [Getting Started](/docs/Getting%20Started.md)
-- [Technology Stack](/docs/Technology%20Stack%20&%20Dependencies.md)
-- [Wallet Setup Guide](/docs/Wallet%20Setup%20Guide.md)
-- [Data Models & Database Schema](/docs/Data%20Models%20&%20Database%20Schema.md)
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) 🆕
+- [Quick Start Guide](/docs/Quick-Start.md) - Get started in 5 minutes
+- [Hackathon Highlights](/docs/Hackathon-Highlights.md) - Key features for judges
+- [Architecture Overview](/docs/Architecture.md) - System architecture
+- [Setup Guide](/docs/Setup-Guide.md) - Complete environment setup
+- [API Reference](/docs/API-Reference.md) - All API endpoints
+- [Development Guide](/docs/Development.md) - Development workflow
+- [Migration Guide](/docs/Migration.md) - Migration from Base to Sui
 
-### Architecture
-- [Component Architecture](/docs/Component%20Architecture)
-- [State Management](/docs/State%20Management)
-- [API Integration Layer](/docs/API%20Integration%20Layer)
-- [Blockchain Integration](/docs/Blockchain%20Integration)
-
-### Features
-- [Gamification System](/docs/Gamification%20System)
-- [Security & Encryption](/docs/Security%20&%20Encryption)
-- [UI Components Library](/docs/UI%20Components%20Library)
-- [Routing & Navigation](/docs/Routing%20&%20Navigation)
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) 🆕
+### Core Technologies
+- [Walrus Integration](/docs/Walrus-Integration.md) - Decentralized storage
+- [Seal Encryption](/docs/Seal-Encryption.md) - Threshold-based encryption
+- [Sui Blockchain](/docs/Sui-Blockchain.md) - Smart contracts and token economy
 
 ## 🏗️ Architecture
 
@@ -49,27 +43,73 @@ For detailed documentation, please visit the [docs](/docs) folder:
 
 ### Security
 - **Client-Side Encryption**: Entries encrypted before upload
-- **Deterministic Keys**: Keys derived from wallet address
-- **Zero-Knowledge**: Server can decrypt for AI analysis
+- **Deterministic Keys**: Keys derived from wallet address (crypto-js)
+- **Optional Seal Encryption**: Enhanced privacy with threshold-based encryption (user choice)
+- **AI Analysis**: Server can decrypt crypto-js entries for AI analysis; Seal-encrypted entries excluded
 
-## 📊 Stage 4: Walrus Integration ✅
+### How It Works
 
-Stage 4 has been completed! Diary entries are now stored on Walrus decentralized storage.
+**Default Encryption (crypto-js):**
+- All entries are encrypted with crypto-js by default
+- Server can decrypt for AI analysis
+- Fast and simple
 
-### What Was Implemented
-- ✅ Walrus SDK integration
-- ✅ Upload relay configuration (payment in MIST/SUI)
-- ✅ Hybrid storage (Walrus + PostgreSQL)
-- ✅ Entry storage and retrieval
-- ✅ Backward compatibility
-- ✅ Error handling and fallbacks
+**Optional Seal Encryption:**
+- Users can enable Seal encryption per entry via checkbox in the editor
+- Entry is encrypted with distributed key servers
+- **Only the user can decrypt** by signing with their wallet
+- **No one else, including the server, can read it** without the user's signature
+- Stored differently in the database
+- **Excluded from AI analysis** (for maximum privacy)
 
-### Documentation
-- [Stage 4 Complete](./STAGE4_COMPLETE.md) - Completion summary
-- [Stage 4 Plan](./STAGE4_WALRUS_STORAGE_PLAN.md) - Implementation plan
-- [Stage 4 Summary](./STAGE4_SUMMARY.md) - Overview and architecture
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) - Detailed guide
+### Configuration
 
-### Diagrams
-- [Sponsored Transactions](./diagrams/sponsored-transactions.excalidraw) - Move smart contract flow
-- [Walrus Storage](./diagrams/walrus-storage.excalidraw) - Storage and payment flow
+Seal is **optional** and can be enabled/disabled via environment variables:
+- `SEAL_ENABLED` - Enable/disable Seal (default: true)
+- `NEXT_PUBLIC_SEAL_OFFICIAL_PACKAGE_ID` - Official Seal package ID
+- `NEXT_PUBLIC_SEAL_PACKAGE_ID` - Access policies package ID
+- `SEAL_POLICY_REGISTRY_ID` - Policy Registry object ID
+- `SEAL_KEY_SERVER_OBJECT_IDS` - Key server object IDs (comma-separated)
+- `SEAL_DEFAULT_THRESHOLD` - Threshold for decryption (default: 2)
+
+See [Seal Setup Guide](./lib/seal/SETUP.md) for detailed configuration.
+
+## 🔗 Smart Contracts
+
+### Main Contract: DiaryToken
+
+**Location**: `sui-contracts/diarybeast_token/sources/diary_token.move`
+
+**Purpose**: Soul-bound token for rewards and gamification
+
+**Key Functions**:
+- `mint_reward`: Admin mints tokens to users
+- `burn`: Users burn tokens for purchases
+- `burn_from`: Admin burns tokens from users
+
+**Package ID**: Configured via environment variable `NEXT_PUBLIC_SUI_PACKAGE_ID` (testnet) or `NEXT_PUBLIC_SUI_PACKAGE_ID_MAINNET` (mainnet)
+
+**Contract Details**:
+- Module: `diarybeast::diary_token`
+- Token Type: `DIARY_TOKEN`
+- Decimals: 9
+- TreasuryCap: Shared object (enables sponsored transactions)
+- AdminCap: Owned object (admin-only operations)
+
+### Seal Access Policies Contract
+
+**Location**: `sui-contracts/diarybeast_seal_policies/sources/seal_policies.move`
+
+**Purpose**: Access control for Seal encryption/decryption
+
+**Key Functions**:
+- `create_policy`: Create access policy for user
+- `seal_approve`: Approve decryption access
+
+**Package ID**: Configured via environment variable `NEXT_PUBLIC_SEAL_PACKAGE_ID`
+
+## 📖 Additional Documentation
+
+- [Seal README](./lib/seal/README.md) - Seal integration documentation
+- [Seal Setup Guide](./lib/seal/SETUP.md) - Setup instructions
+- [Seal Test Scripts](./scripts/seal-tests/README.md) - Test scripts documentation

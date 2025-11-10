@@ -97,7 +97,6 @@ export async function POST(req: NextRequest) {
       txHash,
     });
   } catch (error) {
-    console.error('Summary completion error:', error);
     return NextResponse.json(
       {
         error: 'Failed to complete summary generation',
