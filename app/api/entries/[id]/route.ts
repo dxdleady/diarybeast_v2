@@ -43,7 +43,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     }
 
     // Return entry in the format expected by components
-    // Components expect: { id, date, wordCount, encryptedContent }
+    // Components expect: { id, date, wordCount, encryptedContent, method, seal metadata }
     return NextResponse.json({
       success: true,
       entry: {
@@ -57,6 +57,13 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         walrusBlobId: entryMetadata.walrusBlobId,
         walrusTxDigest: entryMetadata.walrusTxDigest, // Transaction digest for blockchain verification
         adminAddress, // Admin address for explorer link fallback
+        // Seal-specific fields (if using Seal)
+        method: encryptedEntry.method || 'crypto-js', // Default to crypto-js for backward compatibility
+        sealEncryptedObject: encryptedEntry.sealEncryptedObject,
+        sealKey: encryptedEntry.sealKey,
+        sealPackageId: encryptedEntry.sealPackageId,
+        sealId: encryptedEntry.sealId,
+        sealThreshold: encryptedEntry.sealThreshold,
       },
     });
   } catch (error: any) {

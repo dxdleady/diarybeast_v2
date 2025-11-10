@@ -6,11 +6,20 @@ import {
   useCurrentWallet,
   useSuiClientContext,
   useSuiClient,
+  useSignPersonalMessage,
 } from '@mysten/dapp-kit';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { fromB64 } from '@mysten/sui.js/utils';
 import { useUserStore } from '@/lib/stores/userStore';
 import { getWalrusEntryExplorerUrl, formatTxDigest } from '@/lib/walrus/explorer';
+import {
+  hybridDecrypt,
+  isSealAvailable,
+  createSessionKey,
+  createSealAuthorizationTransaction,
+} from '@/lib/seal';
+import { decryptContent } from '@/lib/encryption';
+import { useEncryptionKey } from '@/lib/EncryptionKeyContext';
 
 interface Entry {
   id: string;
@@ -21,6 +30,13 @@ interface Entry {
   walrusBlobId?: string | null; // Blob ID for fallback
   storageType?: string; // Storage type
   adminAddress?: string | null; // Admin address for explorer link fallback
+  // Seal-specific fields (optional)
+  method?: 'crypto-js' | 'seal';
+  sealEncryptedObject?: string;
+  sealKey?: string;
+  sealPackageId?: string;
+  sealId?: string;
+  sealThreshold?: number;
 }
 
 interface WeekGroup {
@@ -145,6 +161,135 @@ export function WeeklyHistory({
 
   const { currentWallet } = useCurrentWallet();
   const { network } = useSuiClientContext(); // Get network for chain identifier
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
+  const { encryptionKey } = useEncryptionKey();
+
+  /**
+   * Decrypt all entries for a week (batch decryption)
+   * This function decrypts Seal-encrypted entries on the client side
+   * and returns decrypted entries that can be sent to the server for AI analysis
+   */
+  const decryptWeekEntries = async (
+    weekEntries: Entry[]
+  ): Promise<Array<{ date: string; content: string; wordCount: number }>> => {
+    if (!address) {
+      throw new Error('Wallet not connected');
+    }
+
+    const decryptedEntries = await Promise.all(
+      weekEntries.map(async (entry) => {
+        try {
+          const encryptionMethod = entry.method || 'crypto-js';
+
+          if (encryptionMethod === 'seal') {
+            // Seal-encrypted entries are excluded from AI analysis
+            // Users can choose to use Seal encryption for additional privacy
+            // In the future: allow users to select which entries to include in analysis
+            return null;
+
+            // FUTURE: Uncomment this code when we allow users to select which entries to include in AI analysis
+            // This code implements client-side Seal decryption for AI analysis
+            /*
+            // Create a single SessionKey for all Seal-encrypted entries (reuse for efficiency)
+            let sessionKey: any = null;
+            let sessionKeyCreated = false;
+            
+            // Seal-encrypted entry - decrypt on client
+            if (!isSealAvailable()) {
+              return null;
+            }
+
+            if (!entry.sealEncryptedObject || !entry.sealId) {
+              return null;
+            }
+
+            try {
+              // Create SessionKey only once (reuse for all entries in the week)
+              if (!sessionKeyCreated) {
+                sessionKey = await createSessionKey(
+                  address,
+                  undefined, // mvrName
+                  30 // ttlMin
+                );
+                
+                // Sign personal message once
+                const personalMessage = sessionKey.getPersonalMessage();
+                const signatureResult = await signPersonalMessage({
+                  message: personalMessage,
+                });
+                await sessionKey.setPersonalMessageSignature(signatureResult.signature);
+                sessionKeyCreated = true;
+              }
+
+              // Create authorization transaction for this entry
+              const txBytes = await createSealAuthorizationTransaction(address, sessionKey, address);
+
+              // Decrypt entry
+              const decrypted = await hybridDecrypt({
+                encryptedData: entry.encryptedContent,
+                method: 'seal',
+                walletAddress: address,
+                sealEncryptedObject: entry.sealEncryptedObject,
+                sessionKey,
+                txBytes,
+                sealId: entry.sealId,
+                sealThreshold: entry.sealThreshold, // Use threshold saved during encryption
+              });
+
+              return {
+                date: entry.date,
+                content: decrypted,
+                wordCount: entry.wordCount || 0,
+              };
+            } catch (sealError: any) {
+              // Try fallback to crypto-js if available
+              if (encryptionKey && entry.encryptedContent) {
+                try {
+                  const decrypted = decryptContent(entry.encryptedContent, encryptionKey);
+                  return {
+                    date: entry.date,
+                    content: decrypted,
+                    wordCount: entry.wordCount || 0,
+                  };
+                } catch (cryptoError) {
+                  return null;
+                }
+              }
+              return null;
+            }
+            */
+          } else {
+            // Crypto-js encrypted entry - decrypt on client
+            if (!encryptionKey) {
+              return null;
+            }
+
+            try {
+              const decrypted = decryptContent(entry.encryptedContent, encryptionKey);
+              return {
+                date: entry.date,
+                content: decrypted,
+                wordCount: entry.wordCount || 0,
+              };
+            } catch (cryptoError) {
+              return null;
+            }
+          }
+        } catch (error) {
+          return null;
+        }
+      })
+    );
+
+    // Filter out null entries (failed decryption)
+    const validEntries = decryptedEntries.filter((entry) => entry !== null) as Array<{
+      date: string;
+      content: string;
+      wordCount: number;
+    }>;
+
+    return validEntries;
+  };
 
   const handleGenerateSummary = async (week: WeekGroup) => {
     if (!address || balance < 50) {
@@ -154,7 +299,20 @@ export function WeeklyHistory({
 
     setGeneratingWeek(week.weekLabel);
     try {
-      // Step 1: Create sponsored transaction and get analysis
+      // Step 1: Decrypt entries for the week on the client
+      // NOTE: Seal-encrypted entries are excluded from AI analysis
+      // In the future: allow users to select which entries to include in analysis
+      const decryptedEntries = await decryptWeekEntries(week.entries);
+
+      if (decryptedEntries.length === 0) {
+        alert(
+          'No entries available for AI analysis this week. Seal-encrypted entries are excluded from analysis.'
+        );
+        setGeneratingWeek(null);
+        return;
+      }
+
+      // Step 2: Send decrypted entries to server for AI analysis
       const res = await fetch('/api/summary/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -162,6 +320,7 @@ export function WeeklyHistory({
           userAddress: address,
           weekStart: week.startDate.toISOString(),
           weekEnd: week.endDate.toISOString(),
+          decryptedEntries: decryptedEntries, // Send client-decrypted entries
         }),
       });
 
@@ -173,18 +332,15 @@ export function WeeklyHistory({
           data = JSON.parse(text);
         } catch (parseError) {
           // If response is not JSON, it's probably an HTML error page
-          console.error('Failed to parse response as JSON. Response:', text.substring(0, 500));
           throw new Error(
             `Server returned non-JSON response (status ${res.status}). This usually indicates a server error.`
           );
         }
       } catch (error) {
-        console.error('Error reading response:', error);
         throw new Error(error instanceof Error ? error.message : 'Failed to read server response');
       }
 
       if (!res.ok) {
-        console.error('Summary generation failed:', { status: res.status, data });
         // Handle specific error cases
         if (data.error === 'No entries found for this week') {
           alert('No diary entries found for this week. Please write some entries first!');
@@ -286,10 +442,6 @@ export function WeeklyHistory({
       const executeData = await executeRes.json();
 
       if (!executeRes.ok) {
-        console.error('Transaction execution failed:', {
-          status: executeRes.status,
-          data: executeData,
-        });
         throw new Error(executeData.error || 'Failed to execute transaction');
       }
 
@@ -313,10 +465,6 @@ export function WeeklyHistory({
       const completeData = await completeRes.json();
 
       if (!completeRes.ok) {
-        console.error('Summary completion failed:', {
-          status: completeRes.status,
-          data: completeData,
-        });
         throw new Error(completeData.error || 'Failed to complete summary generation');
       }
 
@@ -339,7 +487,6 @@ export function WeeklyHistory({
         });
       }
     } catch (error: any) {
-      console.error('Summary generation failed:', error);
       // Only show alert if error message is meaningful (not already handled above)
       if (
         error.message &&

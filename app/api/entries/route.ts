@@ -8,8 +8,21 @@ import { getAdminAddress } from '@/lib/sui/sponsored-transactions';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userAddress, encryptedContent, signature, contentHash, wordCount, messageBytes } =
-      await req.json();
+    const {
+      userAddress,
+      encryptedContent,
+      signature,
+      contentHash,
+      wordCount,
+      messageBytes,
+      encryptionMethod, // 'crypto-js' | 'seal'
+      // Seal-specific fields (optional)
+      sealEncryptedObject,
+      sealKey,
+      sealPackageId,
+      sealId,
+      sealThreshold,
+    } = await req.json();
 
     if (!userAddress || !encryptedContent || !signature || !contentHash) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -61,8 +74,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Entry already exists for today' }, { status: 409 });
     }
 
-    // Create entry using Walrus storage
-    // Store encrypted content on Walrus and metadata in PostgreSQL
+    // Prepare encrypted entry with encryption method and Seal metadata
+    const encryptedEntryData = {
+      content: encryptedContent,
+      signature,
+      contentHash,
+      timestamp: Date.now(),
+      walletAddress: userAddress,
+      wordCount: wordCount || 0,
+      method: encryptionMethod || 'crypto-js', // Default to crypto-js for backward compatibility
+      // Seal-specific fields (if using Seal)
+      ...(encryptionMethod === 'seal' && {
+        sealEncryptedObject,
+        sealKey,
+        sealPackageId,
+        sealId,
+        sealThreshold,
+      }),
+    };
+
+    console.log('[api/entries] Storing entry', {
+      userId: user.id,
+      encryptionMethod,
+      hasSealMetadata: encryptionMethod === 'seal',
+      sealId: encryptionMethod === 'seal' ? sealId : undefined,
+      threshold: encryptionMethod === 'seal' ? sealThreshold : undefined,
+    });
+
+    // Store entry using Walrus storage with encryption metadata
     const {
       id: entryId,
       blobId,
@@ -75,8 +114,16 @@ export async function POST(req: NextRequest) {
       signature,
       contentHash,
       wordCount || 0,
-      5 // Store for 5 epochs on Walrus
+      5, // Store for 5 epochs on Walrus
+      encryptedEntryData // Pass full entry data including Seal metadata
     );
+
+    console.log('[api/entries] Entry stored successfully', {
+      entryId,
+      blobId,
+      txDigest,
+      encryptionMethod,
+    });
 
     // Get the created entry for response
     const entry = await prisma.entry.findUnique({
@@ -205,6 +252,13 @@ export async function POST(req: NextRequest) {
         txDigest: entry.walrusTxDigest, // Include transaction digest for blockchain verification
         storageType: entry.storageType, // Include storage type
         adminAddress, // Include admin address for explorer link fallback
+        encryptionMethod, // Include encryption method for UI display
+        // Include Seal metadata if using Seal
+        ...(encryptionMethod === 'seal' && {
+          sealId,
+          sealThreshold,
+          sealPackageId,
+        }),
       },
       reward: {
         amount: rewardAmount,
@@ -267,15 +321,50 @@ export async function GET(req: NextRequest) {
       // Admin address not available, will use other fallbacks
     }
 
-    // Add admin address to each entry for explorer links
-    const entriesWithAdminAddress = user.entries.map((entry) => ({
-      ...entry,
-      adminAddress,
-    }));
+    // Retrieve Seal metadata from Walrus for entries stored in Walrus
+    // This is needed for client-side Seal decryption
+    const { retrieveEntry } = await import('@/lib/entries/walrus-storage');
+
+    const entriesWithMetadata = await Promise.all(
+      user.entries.map(async (entry) => {
+        // If entry is stored in Walrus, retrieve Seal metadata
+        if (entry.storageType === 'walrus' && entry.walrusBlobId) {
+          try {
+            const walrusEntry = await retrieveEntry(prisma, entry.id);
+            if (walrusEntry) {
+              return {
+                ...entry,
+                adminAddress,
+                // Include encryption method and Seal metadata
+                method: walrusEntry.method || 'crypto-js',
+                sealEncryptedObject: walrusEntry.sealEncryptedObject,
+                sealKey: walrusEntry.sealKey,
+                sealPackageId: walrusEntry.sealPackageId,
+                sealId: walrusEntry.sealId,
+                sealThreshold: walrusEntry.sealThreshold,
+                // Include encryptedContent for backward compatibility and client-side decryption
+                encryptedContent: walrusEntry.content,
+              };
+            }
+          } catch (error) {
+            console.error(`Failed to retrieve Walrus entry ${entry.id}:`, error);
+            // Continue with basic entry data if Walrus retrieval fails
+          }
+        }
+
+        // For PostgreSQL entries or if Walrus retrieval failed, return basic entry
+        return {
+          ...entry,
+          adminAddress,
+          method: 'crypto-js', // Default to crypto-js for PostgreSQL entries
+          encryptedContent: entry.encryptedContent || '', // Include encryptedContent if available
+        };
+      })
+    );
 
     return NextResponse.json({
-      entries: entriesWithAdminAddress,
-      total: entriesWithAdminAddress.length,
+      entries: entriesWithMetadata,
+      total: entriesWithMetadata.length,
     });
   } catch (error) {
     const errorMessage =

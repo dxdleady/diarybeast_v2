@@ -9,7 +9,8 @@ Write in your diary daily to feed and evolve your personal beast. AI analyzes yo
 - **Sponsored Transactions**: Users don't pay gas fees (admin sponsors)
 - **AI Analysis**: Weekly emotion analysis and insights
 - **Gamification**: Pet system with rewards and streaks
-- **End-to-End Encryption**: Client-side encryption for privacy
+- **End-to-End Encryption**: Client-side encryption for privacy (crypto-js by default)
+- **Optional Seal Encryption**: Enhanced privacy with threshold-based encryption (user choice)
 
 ## 📚 Documentation
 
@@ -49,27 +50,38 @@ For detailed documentation, please visit the [docs](/docs) folder:
 
 ### Security
 - **Client-Side Encryption**: Entries encrypted before upload
-- **Deterministic Keys**: Keys derived from wallet address
-- **Zero-Knowledge**: Server can decrypt for AI analysis
+- **Deterministic Keys**: Keys derived from wallet address (crypto-js)
+- **Optional Seal Encryption**: Enhanced privacy with threshold-based encryption (user choice)
+- **AI Analysis**: Server can decrypt crypto-js entries for AI analysis; Seal-encrypted entries excluded
 
-## 📊 Stage 4: Walrus Integration ✅
+### How It Works
 
-Stage 4 has been completed! Diary entries are now stored on Walrus decentralized storage.
+**Default Encryption (crypto-js):**
+- All entries are encrypted with crypto-js by default
+- Server can decrypt for AI analysis
+- Fast and simple
 
-### What Was Implemented
-- ✅ Walrus SDK integration
-- ✅ Upload relay configuration (payment in MIST/SUI)
-- ✅ Hybrid storage (Walrus + PostgreSQL)
-- ✅ Entry storage and retrieval
-- ✅ Backward compatibility
-- ✅ Error handling and fallbacks
+**Optional Seal Encryption:**
+- Users can enable Seal encryption per entry via checkbox in the editor
+- Entry is encrypted with distributed key servers
+- **Only the user can decrypt** by signing with their wallet
+- **No one else, including the server, can read it** without the user's signature
+- Stored differently in the database
+- **Excluded from AI analysis** (for maximum privacy)
+
+### Configuration
+
+Seal is **optional** and can be enabled/disabled via environment variables:
+- `SEAL_ENABLED` - Enable/disable Seal (default: true)
+- `NEXT_PUBLIC_SEAL_OFFICIAL_PACKAGE_ID` - Official Seal package ID
+- `NEXT_PUBLIC_SEAL_PACKAGE_ID` - Access policies package ID
+- `SEAL_POLICY_REGISTRY_ID` - Policy Registry object ID
+- `SEAL_KEY_SERVER_OBJECT_IDS` - Key server object IDs (comma-separated)
+- `SEAL_DEFAULT_THRESHOLD` - Threshold for decryption (default: 2)
+
+See [Seal Setup Guide](./lib/seal/SETUP.md) for detailed configuration.
 
 ### Documentation
-- [Stage 4 Complete](./STAGE4_COMPLETE.md) - Completion summary
-- [Stage 4 Plan](./STAGE4_WALRUS_STORAGE_PLAN.md) - Implementation plan
-- [Stage 4 Summary](./STAGE4_SUMMARY.md) - Overview and architecture
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) - Detailed guide
-
-### Diagrams
-- [Sponsored Transactions](./diagrams/sponsored-transactions.excalidraw) - Move smart contract flow
-- [Walrus Storage](./diagrams/walrus-storage.excalidraw) - Storage and payment flow
+- [Seal README](./lib/seal/README.md) - Seal integration documentation
+- [Seal Setup Guide](./lib/seal/SETUP.md) - Setup instructions
+- [Seal Test Scripts](./scripts/seal-tests/README.md) - Test scripts documentation

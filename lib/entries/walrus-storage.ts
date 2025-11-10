@@ -25,12 +25,19 @@ async function getWalrusSDK() {
 import { getAdminAddress } from '@/lib/sui/sponsored-transactions';
 
 export interface EncryptedEntry {
-  content: string;
+  content: string; // Base64 encoded encrypted content (crypto-js or Seal)
   signature: string;
   contentHash: string;
   timestamp: number;
   walletAddress: string;
   wordCount?: number;
+  // Seal-specific fields (optional)
+  method?: 'crypto-js' | 'seal';
+  sealEncryptedObject?: string; // Base64 encoded Seal encrypted object
+  sealKey?: string; // Base64 encoded Seal key (for backup)
+  sealPackageId?: string;
+  sealId?: string; // Identity used for encryption
+  sealThreshold?: number;
 }
 
 /**
@@ -99,6 +106,7 @@ export async function retrieveEntryFromWalrus(blobId: string): Promise<Encrypted
  * @param contentHash - Content hash
  * @param wordCount - Word count
  * @param epochs - Storage duration in epochs
+ * @param entryData - Optional: Full entry data including encryption method and Seal metadata
  * @returns Entry ID, blob ID, transaction digest, and blob object ID
  */
 export async function storeEntry(
@@ -108,9 +116,10 @@ export async function storeEntry(
   signature: string,
   contentHash: string,
   wordCount: number,
-  epochs: number = 5
+  epochs: number = 5,
+  entryData?: Partial<EncryptedEntry>
 ): Promise<{ id: string; blobId: string; txDigest?: string; blobObjectId?: string }> {
-  // Prepare encrypted entry
+  // Prepare encrypted entry with optional Seal metadata
   const encryptedEntry: EncryptedEntry = {
     content: encryptedContent,
     signature,
@@ -118,6 +127,15 @@ export async function storeEntry(
     timestamp: Date.now(),
     walletAddress: userId,
     wordCount,
+    // Include encryption method and Seal metadata if provided
+    ...(entryData && {
+      method: entryData.method,
+      sealEncryptedObject: entryData.sealEncryptedObject,
+      sealKey: entryData.sealKey,
+      sealPackageId: entryData.sealPackageId,
+      sealId: entryData.sealId,
+      sealThreshold: entryData.sealThreshold,
+    }),
   };
 
   // IMPORTANT: Use admin address (from SUI_ADMIN_PRIVATE_KEY) as the owner of blob object

@@ -3,9 +3,21 @@
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { decryptContent } from '@/lib/encryption';
+import {
+  hybridDecrypt,
+  isSealAvailable,
+  createSessionKey,
+  createSealAuthorizationTransaction,
+} from '@/lib/seal';
 import { useEncryptionKey } from '@/lib/EncryptionKeyContext';
 import { getWalrusEntryExplorerUrl, formatTxDigest } from '@/lib/walrus/explorer';
-import { useSuiClientContext } from '@mysten/dapp-kit';
+import {
+  useSuiClientContext,
+  useCurrentAccount,
+  useSignAndExecuteTransaction,
+  useSignPersonalMessage,
+} from '@mysten/dapp-kit';
+import type { HybridDecryptionOptions } from '@/lib/seal';
 
 interface Entry {
   id: string;
@@ -16,6 +28,13 @@ interface Entry {
   walrusBlobId?: string | null; // Blob ID for fallback
   storageType?: string; // Storage type
   adminAddress?: string | null; // Admin address for explorer link fallback
+  // Seal-specific fields (optional)
+  method?: 'crypto-js' | 'seal';
+  sealEncryptedObject?: string;
+  sealKey?: string;
+  sealPackageId?: string;
+  sealId?: string;
+  sealThreshold?: number;
 }
 
 interface EntryViewerProps {
@@ -26,9 +45,14 @@ interface EntryViewerProps {
 export function EntryViewer({ entry, onBack }: EntryViewerProps) {
   const { encryptionKey } = useEncryptionKey();
   const { network } = useSuiClientContext();
+  const currentAccount = useCurrentAccount();
+  const address = currentAccount?.address;
+  const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+  const { mutateAsync: signPersonalMessage } = useSignPersonalMessage();
   const [decryptedContent, setDecryptedContent] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [fontFamily, setFontFamily] = useState('sans');
+  const [decrypting, setDecrypting] = useState(false);
 
   // Get explorer URL for blockchain verification
   // Prefers txDigest, then blobObjectId, then admin address
@@ -42,6 +66,10 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
         )
       : null;
 
+  // Determine encryption method for display
+  const encryptionMethod = entry.method || 'crypto-js';
+  const isSealEncrypted = encryptionMethod === 'seal';
+
   // Load font preference
   useEffect(() => {
     const saved = localStorage.getItem('diary-font');
@@ -52,16 +80,104 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
     // Reset state when entry changes
     setDecryptedContent('');
     setError(null);
+    setDecrypting(false);
 
-    if (!entry || !encryptionKey) return;
+    if (!entry) return;
 
-    try {
-      const decrypted = decryptContent(entry.encryptedContent, encryptionKey);
-      setDecryptedContent(decrypted);
-    } catch (err: any) {
-      setError(`Decryption failed: ${err.message || err}`);
-    }
-  }, [entry?.id, encryptionKey]);
+    // Determine encryption method
+    const encryptionMethod = entry.method || 'crypto-js'; // Default to crypto-js for backward compatibility
+
+    // Decrypt based on encryption method
+    const decryptEntry = async () => {
+      setDecrypting(true);
+      try {
+        if (encryptionMethod === 'seal') {
+          // Use Seal decryption
+          if (!isSealAvailable()) {
+            throw new Error('Seal is not configured. Cannot decrypt Seal-encrypted entry.');
+          }
+
+          if (!address) {
+            throw new Error(
+              'Wallet not connected. Please connect your wallet to decrypt Seal-encrypted entry.'
+            );
+          }
+
+          if (!entry.sealEncryptedObject || !entry.sealId) {
+            throw new Error('Missing Seal metadata. Entry may be corrupted.');
+          }
+
+          try {
+            // Create session key for Seal decryption
+            const sessionKey = await createSessionKey(
+              address,
+              undefined, // mvrName - optional, not needed for basic Seal usage
+              30 // ttlMin (30 minutes - max allowed by Seal SDK)
+            );
+
+            // IMPORTANT: Seal requires personal message signature before decryption
+            const personalMessage = sessionKey.getPersonalMessage();
+
+            // Sign personal message using wallet
+            const signatureResult = await signPersonalMessage({
+              message: personalMessage,
+            });
+
+            // Set signature in SessionKey (required for Seal decryption)
+            await sessionKey.setPersonalMessageSignature(signatureResult.signature);
+
+            // Create transaction bytes for seal_approve
+            const txBytes = await createSealAuthorizationTransaction(address, sessionKey, address);
+
+            // Decrypt using Seal
+            const decrypted = await hybridDecrypt({
+              encryptedData: entry.encryptedContent,
+              method: 'seal',
+              walletAddress: address,
+              sealEncryptedObject: entry.sealEncryptedObject,
+              sessionKey,
+              txBytes,
+              sealId: entry.sealId,
+              sealThreshold: entry.sealThreshold, // Use threshold saved during encryption
+            });
+
+            setDecryptedContent(decrypted);
+          } catch (sealError: any) {
+            // If Seal decryption fails, try to fall back to crypto-js if available
+            if (encryptionKey && entry.encryptedContent) {
+              try {
+                const decrypted = decryptContent(entry.encryptedContent, encryptionKey);
+                setDecryptedContent(decrypted);
+              } catch (cryptoError) {
+                throw new Error(
+                  `Seal decryption failed: ${sealError.message}. Fallback to crypto-js also failed.`
+                );
+              }
+            } else {
+              throw sealError;
+            }
+          }
+        } else {
+          // Use crypto-js decryption (legacy method)
+          if (!encryptionKey) {
+            throw new Error('Encryption key not available');
+          }
+
+          const decrypted = decryptContent(entry.encryptedContent, encryptionKey);
+          setDecryptedContent(decrypted);
+        }
+      } catch (err: any) {
+        setError(`Decryption failed: ${err.message || err}`);
+      } finally {
+        setDecrypting(false);
+      }
+    };
+
+    decryptEntry();
+    // React Strict Mode in development causes useEffect to run twice
+    // This is expected behavior and helps catch bugs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry, encryptionKey, address]);
 
   const formattedDate = new Date(entry.date).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -69,6 +185,27 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
     month: 'long',
     day: 'numeric',
   });
+
+  // Show loading state while decrypting
+  if (decrypting) {
+    return (
+      <div className="max-w-3xl mx-auto p-8">
+        <div className="text-center">
+          <div className="font-mono text-lg mb-4 animate-pulse text-primary">
+            Decrypting entry...
+          </div>
+          <div className="text-primary/40 font-mono text-sm mb-2">
+            {isSealEncrypted ? '🔐 Using Seal encryption' : '🔒 Using crypto-js encryption'}
+          </div>
+          {isSealEncrypted && (
+            <div className="text-primary/30 font-mono text-xs">
+              Creating session key and authorization transaction...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto p-8">
@@ -85,10 +222,35 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
-            <h1 className="text-3xl font-display font-bold mb-2 text-primary drop-shadow-[0_0_8px_rgba(0,229,255,0.4)]">
-              {formattedDate}
-            </h1>
-            <p className="text-primary/60 font-mono text-sm">{entry.wordCount} words</p>
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h1 className="text-3xl font-display font-bold text-primary drop-shadow-[0_0_8px_rgba(0,229,255,0.4)]">
+                {formattedDate}
+              </h1>
+              {/* Encryption Method Badge */}
+              {isSealEncrypted ? (
+                <div
+                  className="flex items-center gap-1 px-2 py-1 bg-primary/10 rounded text-xs font-mono text-primary border border-primary/20"
+                  title="Encrypted with Seal (threshold-based decryption)"
+                >
+                  🔐 Seal
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-1 px-2 py-1 bg-primary/5 rounded text-xs font-mono text-primary/60 border border-primary/10"
+                  title="Encrypted with crypto-js (legacy method)"
+                >
+                  🔒 crypto-js
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-sm text-primary/60 font-mono">
+              <span>{entry.wordCount} words</span>
+              {isSealEncrypted && entry.sealThreshold && (
+                <span className="text-primary/40" title="Threshold for Seal decryption">
+                  Threshold: {entry.sealThreshold}
+                </span>
+              )}
+            </div>
           </div>
           {explorerUrl && entry.storageType === 'walrus' && (
             <a
