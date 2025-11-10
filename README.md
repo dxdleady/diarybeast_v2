@@ -16,25 +16,18 @@ Write in your diary daily to feed and evolve your personal beast. AI analyzes yo
 
 For detailed documentation, please visit the [docs](/docs) folder:
 
-- [Project Overview](/docs/Project%20Overview.md)
-- [Getting Started](/docs/Getting%20Started.md)
-- [Technology Stack](/docs/Technology%20Stack%20&%20Dependencies.md)
-- [Wallet Setup Guide](/docs/Wallet%20Setup%20Guide.md)
-- [Data Models & Database Schema](/docs/Data%20Models%20&%20Database%20Schema.md)
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) 🆕
+- [Quick Start Guide](/docs/Quick-Start.md) - Get started in 5 minutes
+- [Hackathon Highlights](/docs/Hackathon-Highlights.md) - Key features for judges
+- [Architecture Overview](/docs/Architecture.md) - System architecture
+- [Setup Guide](/docs/Setup-Guide.md) - Complete environment setup
+- [API Reference](/docs/API-Reference.md) - All API endpoints
+- [Development Guide](/docs/Development.md) - Development workflow
+- [Migration Guide](/docs/Migration.md) - Migration from Base to Sui
 
-### Architecture
-- [Component Architecture](/docs/Component%20Architecture)
-- [State Management](/docs/State%20Management)
-- [API Integration Layer](/docs/API%20Integration%20Layer)
-- [Blockchain Integration](/docs/Blockchain%20Integration)
-
-### Features
-- [Gamification System](/docs/Gamification%20System)
-- [Security & Encryption](/docs/Security%20&%20Encryption)
-- [UI Components Library](/docs/UI%20Components%20Library)
-- [Routing & Navigation](/docs/Routing%20&%20Navigation)
-- [Walrus Storage Integration](/docs/Walrus%20Storage%20Integration.md) 🆕
+### Core Technologies
+- [Walrus Integration](/docs/Walrus-Integration.md) - Decentralized storage
+- [Seal Encryption](/docs/Seal-Encryption.md) - Threshold-based encryption
+- [Sui Blockchain](/docs/Sui-Blockchain.md) - Smart contracts and token economy
 
 ## 🏗️ Architecture
 
@@ -81,7 +74,42 @@ Seal is **optional** and can be enabled/disabled via environment variables:
 
 See [Seal Setup Guide](./lib/seal/SETUP.md) for detailed configuration.
 
-### Documentation
+## 🔗 Smart Contracts
+
+### Main Contract: DiaryToken
+
+**Location**: `sui-contracts/diarybeast_token/sources/diary_token.move`
+
+**Purpose**: Soul-bound token for rewards and gamification
+
+**Key Functions**:
+- `mint_reward`: Admin mints tokens to users
+- `burn`: Users burn tokens for purchases
+- `burn_from`: Admin burns tokens from users
+
+**Package ID**: Configured via environment variable `NEXT_PUBLIC_SUI_PACKAGE_ID` (testnet) or `NEXT_PUBLIC_SUI_PACKAGE_ID_MAINNET` (mainnet)
+
+**Contract Details**:
+- Module: `diarybeast::diary_token`
+- Token Type: `DIARY_TOKEN`
+- Decimals: 9
+- TreasuryCap: Shared object (enables sponsored transactions)
+- AdminCap: Owned object (admin-only operations)
+
+### Seal Access Policies Contract
+
+**Location**: `sui-contracts/diarybeast_seal_policies/sources/seal_policies.move`
+
+**Purpose**: Access control for Seal encryption/decryption
+
+**Key Functions**:
+- `create_policy`: Create access policy for user
+- `seal_approve`: Approve decryption access
+
+**Package ID**: Configured via environment variable `NEXT_PUBLIC_SEAL_PACKAGE_ID`
+
+## 📖 Additional Documentation
+
 - [Seal README](./lib/seal/README.md) - Seal integration documentation
 - [Seal Setup Guide](./lib/seal/SETUP.md) - Setup instructions
 - [Seal Test Scripts](./scripts/seal-tests/README.md) - Test scripts documentation
