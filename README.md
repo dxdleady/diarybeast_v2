@@ -2,6 +2,24 @@
 
 Write in your diary daily to feed and evolve your personal beast. AI analyzes your emotions to unlock psychological archetypes, generate custom music, and reveal rare collectible creatures.
 
+## 🏆 Walrus Haulout Hackathon
+
+**This project is participating in the [Walrus Haulout Hackathon](https://www.walrus.xyz/haulout) (November 6-16, 2025)**
+
+DiaryBeast leverages **Walrus** for decentralized storage, **Seal** for threshold-based encryption, and **Sui** blockchain for token economy, competing in the **Data Security & Privacy** and **Provably Authentic** tracks.
+
+- 🏅 **Hackathon**: [Walrus Haulout Hackathon](https://www.walrus.xyz/haulout)
+- 📅 **Dates**: November 6-16, 2025
+- 🎯 **Tracks**: Data Security & Privacy, Provably Authentic
+- 💰 **Prize Pool**: $100,000+ in prizes
+
+## 📸 Screenshots
+
+![Main Screen](public/screenshots/main-screen.png)
+![Pet Dashboard](public/screenshots/pet-dashboard.png)
+![Weekly Insights](public/screenshots/weekly-insights.png)
+![Shop](public/screenshots/shop.png)
+
 ## 🚀 Features
 
 - **Decentralized Storage**: Diary entries stored on Walrus (decentralized storage)
@@ -28,6 +46,37 @@ For detailed documentation, please visit the [docs](/docs) folder:
 - [Walrus Integration](/docs/Walrus-Integration.md) - Decentralized storage
 - [Seal Encryption](/docs/Seal-Encryption.md) - Threshold-based encryption
 - [Sui Blockchain](/docs/Sui-Blockchain.md) - Smart contracts and token economy
+- [Gamification System](/docs/Gamification.md) - Pet system, streaks, and rewards
+
+## 🎮 Gamification
+
+DiaryBeast features a comprehensive gamification system to encourage consistent journaling:
+
+### Pet Life System
+- **7 Lives**: Start with 7 lives for your virtual pet
+- **Life Restoration**: Writing entries restores +2 lives
+- **Life Loss**: 1 life lost per 24 hours of inactivity (after 24h grace period)
+- **Pet States**: Happy (4-7 lives), Sad (1-3 lives), Critical (0 lives)
+
+### Streak System
+- **Consecutive Days**: Track your journaling streak
+- **Milestone Bonuses**: Earn bonus tokens at 3, 7, 14, 30, 60, 90, 180, and 365 days
+- **Reward Multipliers**: Based on pet condition (happiness and lives)
+- **Streak Reset**: Resets if you miss a day or pet loses all lives
+
+### Token Rewards
+- **Base Reward**: 10 tokens per entry
+- **Reward Multipliers**: Based on pet condition (higher happiness/lives = higher multiplier)
+- **Milestone Bonuses**: 5 to 5,000 tokens for achievements (multiplied by reward multiplier)
+- **Shop Items**: Spend tokens on food, items, and customization
+
+### Shop System
+- **Food Items**: Restore lives and happiness (5-50 tokens)
+- **Consumable Items**: Special effects like health potions (50-150 tokens)
+- **Customization**: Backgrounds and accessories for your pet
+- **Soul-Bound**: All items are non-transferable (soul-bound)
+
+See [Gamification System](/docs/Gamification.md) for detailed information.
 
 ## 🏗️ Architecture
 

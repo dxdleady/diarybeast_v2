@@ -255,3 +255,116 @@
     background: rgba(26, 35, 50, 0.5);
   }
 }
+
+/* Wallet Connect Button Custom Styles - Global */
+/* Target the ConnectButton from dapp-kit */
+.wallet-connect-wrapper > * > button,
+.wallet-connect-connected > * > button,
+.wallet-connect-wrapper button:not(button button),
+.wallet-connect-connected button:not(button button) {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.15) 0%, rgba(0, 184, 212, 0.1) 100%) !important;
+  border: 2px solid var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  font-weight: 700 !important;
+  font-size: 16px !important;
+  padding: 14px 36px !important;
+  border-radius: 10px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 
+    0 0 25px rgba(0, 229, 255, 0.4), 
+    0 0 50px rgba(0, 229, 255, 0.2),
+    inset 0 0 20px rgba(0, 229, 255, 0.1) !important;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.6) !important;
+  cursor: pointer !important;
+  position: relative !important;
+  overflow: hidden !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Ensure nested elements (icons, text) maintain their styling */
+.wallet-connect-wrapper button svg,
+.wallet-connect-connected button svg,
+.wallet-connect-wrapper button img,
+.wallet-connect-connected button img,
+.wallet-connect-wrapper button span,
+.wallet-connect-connected button span {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 4px !important;
+  color: inherit !important;
+}
+
+.wallet-connect-wrapper > * > button::before,
+.wallet-connect-wrapper button:not(button button)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 229, 255, 0.3), transparent);
+  transition: left 0.6s ease;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.wallet-connect-wrapper > * > button:hover::before,
+.wallet-connect-wrapper button:not(button button):hover::before {
+  left: 100%;
+}
+
+/* Ensure button content is above the shine effect */
+.wallet-connect-wrapper > * > button > *,
+.wallet-connect-wrapper button:not(button button) > * {
+  position: relative;
+  z-index: 2;
+}
+
+.wallet-connect-wrapper > * > button:hover,
+.wallet-connect-connected > * > button:hover,
+.wallet-connect-wrapper button:not(button button):hover,
+.wallet-connect-connected button:not(button button):hover {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.25) 0%, rgba(0, 184, 212, 0.2) 100%) !important;
+  box-shadow: 
+    0 0 40px rgba(0, 229, 255, 0.7), 
+    0 0 80px rgba(0, 229, 255, 0.4), 
+    0 0 120px rgba(0, 229, 255, 0.2),
+    inset 0 0 30px rgba(0, 229, 255, 0.15) !important;
+  transform: translateY(-3px) scale(1.03) !important;
+  border-color: var(--color-primary-light) !important;
+  text-shadow: 0 0 15px rgba(0, 229, 255, 0.8) !important;
+}
+
+.wallet-connect-wrapper > * > button:active,
+.wallet-connect-connected > * > button:active,
+.wallet-connect-wrapper button:not(button button):active,
+.wallet-connect-connected button:not(button button):active {
+  transform: translateY(-1px) scale(1.01) !important;
+  box-shadow: 
+    0 0 20px rgba(0, 229, 255, 0.5), 
+    0 0 40px rgba(0, 229, 255, 0.3) !important;
+}
+
+/* Pulse animation for connect button */
+.wallet-connect-wrapper > * > button,
+.wallet-connect-wrapper button:not(button button) {
+  animation: pulse-glow 2.5s ease-in-out infinite !important;
+}
+
+/* Connected state - smaller button */
+.wallet-connect-connected > * > button,
+.wallet-connect-connected button:not(button button) {
+  padding: 10px 24px !important;
+  font-size: 14px !important;
+  animation: none !important;
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.3) !important;
+}
+
+.wallet-connect-connected > * > button:hover,
+.wallet-connect-connected button:not(button button):hover {
+  box-shadow: 0 0 25px rgba(0, 229, 255, 0.5) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}

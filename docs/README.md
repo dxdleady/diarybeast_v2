@@ -23,6 +23,9 @@ Welcome to the DiaryBeast documentation! This comprehensive guide covers everyth
 - **[Development Guide](./Development.md)** - Local development workflow
 - **[API Reference](./API-Reference.md)** - All API endpoints
 
+#### Features
+- **[Gamification System](./Gamification.md)** - Pet system, streaks, and rewards
+
 #### Migration & History
 - **[Migration Guide](./Migration.md)** - Migration from Base to Sui
 
@@ -54,10 +57,15 @@ Welcome to the DiaryBeast documentation! This comprehensive guide covers everyth
 
 ## 🔗 External Resources
 
+### Hackathon
+- [Walrus Haulout Hackathon](https://www.walrus.xyz/haulout) - Official hackathon website
+- [Walrus Haulout Hackathon Handbook](https://mystenlabs.notion.site/Walrus-Haulout-Hackathon-Participant-Handbook-2886d9dcb4e980e2adc1d047a95dfef8) - Participant handbook
+- [DeepSurge](https://deepsurge.io/) - Hackathon registration and submission portal
+
+### Documentation
 - [Sui Documentation](https://docs.sui.io/)
 - [Walrus Documentation](https://walrus.wal.app/)
 - [Seal Documentation](https://seal-docs.wal.app/)
-- [Walrus Haulout Hackathon Handbook](https://mystenlabs.notion.site/Walrus-Haulout-Hackathon-Participant-Handbook-2886d9dcb4e980e2adc1d047a95dfef8)
 
 ## 📝 Contributing
 
