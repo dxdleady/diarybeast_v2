@@ -1,6 +1,14 @@
 # Hackathon Highlights
 
-This document highlights the key features and innovations of DiaryBeast for the Walrus Haulout Hackathon judges.
+This document highlights the key features and innovations of DiaryBeast for the [Walrus Haulout Hackathon](https://www.walrus.xyz/haulout) judges.
+
+## 🏆 Hackathon Information
+
+- **Hackathon**: [Walrus Haulout Hackathon](https://www.walrus.xyz/haulout)
+- **Dates**: November 6-16, 2025
+- **Tracks**: Data Security & Privacy, Provably Authentic
+- **Prize Pool**: $100,000+ in prizes
+- **Registration**: [DeepSurge](https://deepsurge.io/) (hackathon portal)
 
 ## 🦭 Walrus Integration
 
@@ -105,6 +113,47 @@ DiaryBeast uses **Sui blockchain** for token economy and sponsored transactions.
 - ✅ Move contracts (type-safe, secure)
 - ✅ Shared objects (enables sponsored transactions)
 
+## 🔐 Provably Authentic Integration
+
+### What We Built
+DiaryBeast provides **provable authenticity** for diary entries through onchain verification and content addressing.
+
+### Key Features
+
+1. **Onchain Verification**: Transaction digests stored on-chain for verifiable storage
+2. **Content Addressing**: Entries are content-addressed via Walrus blob IDs
+3. **Access Policies**: Onchain access policies via Move contracts (Seal policies)
+4. **Signature Verification**: All entries require wallet signature for authenticity
+5. **Verifiable Storage**: Walrus transaction digests prove data integrity
+
+### Implementation Details
+
+**Transaction Digests**:
+- Each entry stored on Walrus includes a transaction digest
+- Digests are stored in PostgreSQL for fast lookup
+- Digests provide onchain proof of storage and timing
+
+**Content Addressing**:
+- Entries are content-addressed via Walrus blob IDs
+- Blob IDs are immutable and verifiable
+- Content hash ensures data integrity
+
+**Access Policies**:
+- Seal access policies stored onchain via Move contracts
+- Policies control who can decrypt data
+- Onchain verification via `seal_approve` function
+
+**Key Files**:
+- `lib/entries/walrus-storage.ts` - Storage with transaction digests
+- `sui-contracts/diarybeast_seal_policies/sources/seal_policies.move` - Access policies contract
+- `prisma/schema.prisma` - Database schema with `walrusTxDigest` field
+
+**Benefits**:
+- ✅ **Provable authenticity**: Transaction digests prove data existence
+- ✅ **Content integrity**: Content addressing ensures data hasn't changed
+- ✅ **Onchain policies**: Access control policies stored onchain
+- ✅ **Verifiable storage**: Walrus provides verifiable, immutable storage
+
 ## 🎯 Innovation & Uniqueness
 
 ### 1. Hybrid Storage Model
@@ -124,6 +173,11 @@ DiaryBeast uses **Sui blockchain** for token economy and sponsored transactions.
 - **Privacy-first**: Only crypto-js encrypted entries analyzed
 - **User control**: Users can choose which entries to include in AI analysis (future feature)
 
+### 5. Provably Authentic Storage
+- **Onchain verification**: Transaction digests prove data existence
+- **Content addressing**: Immutable blob IDs for data integrity
+- **Access policies**: Onchain policies for access control
+
 ## 📊 Technical Achievements
 
 1. **Full Walrus Integration**: Complete decentralized storage implementation
@@ -131,6 +185,7 @@ DiaryBeast uses **Sui blockchain** for token economy and sponsored transactions.
 3. **Move Smart Contracts**: Two contracts (token + access policies)
 4. **Sponsored Transactions**: Gas-free user experience
 5. **Hybrid Encryption**: Supports both Seal and crypto-js
+6. **Provably Authentic Storage**: Onchain verification, content addressing, and transaction digests
 
 ## 💡 Problem Statement
 

@@ -27,7 +27,7 @@ const chakraPetch = Chakra_Petch({
 export const metadata: Metadata = {
   title: 'DiaryBeast - Write Daily. Grow Your Beast. Own Your Mind.',
   description:
-    'Your private diary with a digital companion that evolves with you. Write. Reflect. Earn DIARY tokens on Base. Your entries are encrypted—only you can read them.',
+    'Your private diary with a digital companion that evolves with you. Write. Reflect. Earn DIARY tokens on Sui. Your entries are encrypted and stored on Walrus—only you can read them.',
   icons: {
     icon: '/diary-beast-favicon-black.svg',
   },

@@ -164,51 +164,77 @@ export default function Home() {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="pt-3 flex items-center justify-center gap-4 text-primary/40 text-xs font-mono">
+        {/* Footer - Technology Stack */}
+        <div className="pt-3 flex items-center justify-center gap-3 md:gap-4 text-primary/40 text-sm font-mono flex-wrap">
           <a
-            href="https://base.org"
+            href="https://sui.io"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 hover:text-primary transition-colors group"
           >
-            <div className="relative w-5 h-5">
+            <div className="relative w-8 h-8 md:w-10 md:h-10">
               <Image
-                src="/assets/base.png"
-                alt="Base"
+                src="/assets/sui-logo.svg"
+                alt="Sui"
                 fill
-                sizes="20px"
-                className="object-contain group-hover:drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                sizes="40px"
+                className="object-contain group-hover:drop-shadow-[0_0_10px_rgba(99,102,241,0.6)]"
               />
             </div>
-            Base
+            <span className="hidden sm:inline">Sui</span>
           </a>
-          <span>•</span>
+          <span className="text-primary/20">•</span>
           <a
-            href="https://onchainkit.xyz"
+            href="https://www.walrus.xyz"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-primary transition-colors"
+            className="flex items-center gap-2 hover:text-primary transition-colors group"
           >
-            OnchainKit
+            <div className="relative w-8 h-8 md:w-10 md:h-10 rounded-md bg-white/70 backdrop-blur-sm p-1.5 group-hover:bg-white/80 transition-all border border-white/40 shadow-lg">
+              <Image
+                src="/assets/walrus_logo.svg"
+                alt="Walrus"
+                fill
+                sizes="40px"
+                className="object-contain contrast-150 brightness-105 group-hover:drop-shadow-[0_0_10px_rgba(0,229,255,0.6)]"
+              />
+            </div>
+            <span className="hidden sm:inline">Walrus</span>
           </a>
-          <span>•</span>
+          <span className="text-primary/20">•</span>
+          <a
+            href="https://seal-docs.wal.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 hover:text-primary transition-colors group"
+          >
+            <div className="relative w-8 h-8 md:w-10 md:h-10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/assets/seal_logo.png"
+                alt="Seal"
+                className="w-full h-full object-contain group-hover:drop-shadow-[0_0_10px_rgba(139,92,246,0.6)]"
+              />
+            </div>
+            <span className="hidden sm:inline">Seal</span>
+          </a>
+          <span className="text-primary/20">•</span>
           <a
             href="https://mubert.com"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 hover:text-primary transition-colors group"
           >
-            <div className="relative w-5 h-5">
+            <div className="relative w-8 h-8 md:w-10 md:h-10">
               <Image
                 src="/assets/mubert.png"
                 alt="Mubert"
                 fill
-                sizes="20px"
-                className="object-contain group-hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]"
+                sizes="40px"
+                className="object-contain group-hover:drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]"
               />
             </div>
-            Mubert
+            <span className="hidden sm:inline">Mubert</span>
           </a>
         </div>
       </div>
