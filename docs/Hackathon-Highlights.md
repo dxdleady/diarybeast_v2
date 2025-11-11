@@ -251,19 +251,23 @@ DiaryBeast provides:
 
 ### Testing Coverage
 
-- **Unit Tests**: Core functionality
-- **Integration Tests**: Walrus, Seal, Sui integration
-- **E2E Tests**: Full user flows
-- **Seal Test Scripts**: Dedicated test suite
-- **Contract Tests**: Move contract tests
+- **Move Contract Tests**: Comprehensive tests for `diary_token.move` (minting, burning, transfers)
+- **Seal Test Scripts**: Manual test scripts for Seal encryption/decryption (`scripts/seal-tests/`)
+  - Encryption/decryption testing
+  - Key server configuration validation
+  - Access policy creation and verification
+  - Diagnostic scripts for troubleshooting
+
+**Note**: Full test suite (unit tests, integration tests, E2E tests) is planned for future development.
 
 ### Security Measures
 
 - **Client-Side Encryption**: All entries encrypted before upload
-- **Threshold-Based Encryption**: Optional Seal encryption
-- **Onchain Access Control**: Move contracts for policies
+- **Threshold-Based Encryption**: Optional Seal encryption with distributed key servers
+- **Onchain Access Control**: Move contracts for Seal access policies
 - **Signature Verification**: All operations require wallet signature
 - **No Private Keys in Code**: Environment variables only
+- **Sponsored Transactions**: Admin pays gas fees (users don't need to manage SUI)
 
 ## 🔗 Resources
 
