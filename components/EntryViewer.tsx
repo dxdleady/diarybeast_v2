@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { decryptContent } from '@/lib/encryption';
 import {
@@ -53,6 +53,7 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [fontFamily, setFontFamily] = useState('sans');
   const [decrypting, setDecrypting] = useState(false);
+  const decryptingRef = useRef(false); // Защита от повторных вызовов
 
   // Get explorer URL for blockchain verification
   // Prefers txDigest, then blobObjectId, then admin address
@@ -81,8 +82,15 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
     setDecryptedContent('');
     setError(null);
     setDecrypting(false);
+    decryptingRef.current = false; // Сброс флага при изменении entry
 
     if (!entry) return;
+
+    // Защита от повторных вызовов (React Strict Mode)
+    if (decryptingRef.current) {
+      return;
+    }
+    decryptingRef.current = true;
 
     // Determine encryption method
     const encryptionMethod = entry.method || 'crypto-js'; // Default to crypto-js for backward compatibility
@@ -116,9 +124,10 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
             );
 
             // IMPORTANT: Seal requires personal message signature before decryption
+            // Подпись запрашивается ОДИН раз здесь
             const personalMessage = sessionKey.getPersonalMessage();
 
-            // Sign personal message using wallet
+            // Sign personal message using wallet (ОДИН раз)
             const signatureResult = await signPersonalMessage({
               message: personalMessage,
             });
@@ -127,9 +136,12 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
             await sessionKey.setPersonalMessageSignature(signatureResult.signature);
 
             // Create transaction bytes for seal_approve
+            // NOTE: txBytes создается с onlyTransactionKind: true, поэтому НЕ требует подписи
             const txBytes = await createSealAuthorizationTransaction(address, sessionKey, address);
 
             // Decrypt using Seal
+            // fetchKeys и decrypt внутри Seal SDK используют уже подписанный sessionKey
+            // и txBytes (который не требует подписи, т.к. onlyTransactionKind: true)
             const decrypted = await hybridDecrypt({
               encryptedData: entry.encryptedContent,
               method: 'seal',
@@ -170,12 +182,13 @@ export function EntryViewer({ entry, onBack }: EntryViewerProps) {
         setError(`Decryption failed: ${err.message || err}`);
       } finally {
         setDecrypting(false);
+        decryptingRef.current = false; // Сброс флага после завершения
       }
     };
 
     decryptEntry();
-    // React Strict Mode in development causes useEffect to run twice
-    // This is expected behavior and helps catch bugs
+    // React Strict Mode в development вызывает useEffect дважды
+    // Защита через decryptingRef предотвращает повторный вызов
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry, encryptionKey, address]);
 

@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
       success: true,
       entry: {
         id: entry.id,
-        date: entry.date,
+        date: entry.date.toISOString(), // Convert Date to ISO string for consistency
         blobId: entry.walrusBlobId, // Include Walrus blob ID
         txDigest: entry.walrusTxDigest, // Include transaction digest for blockchain verification
         storageType: entry.storageType, // Include storage type
@@ -321,46 +321,25 @@ export async function GET(req: NextRequest) {
       // Admin address not available, will use other fallbacks
     }
 
-    // Retrieve Seal metadata from Walrus for entries stored in Walrus
-    // This is needed for client-side Seal decryption
-    const { retrieveEntry } = await import('@/lib/entries/walrus-storage');
-
-    const entriesWithMetadata = await Promise.all(
-      user.entries.map(async (entry) => {
-        // If entry is stored in Walrus, retrieve Seal metadata
-        if (entry.storageType === 'walrus' && entry.walrusBlobId) {
-          try {
-            const walrusEntry = await retrieveEntry(prisma, entry.id);
-            if (walrusEntry) {
-              return {
-                ...entry,
-                adminAddress,
-                // Include encryption method and Seal metadata
-                method: walrusEntry.method || 'crypto-js',
-                sealEncryptedObject: walrusEntry.sealEncryptedObject,
-                sealKey: walrusEntry.sealKey,
-                sealPackageId: walrusEntry.sealPackageId,
-                sealId: walrusEntry.sealId,
-                sealThreshold: walrusEntry.sealThreshold,
-                // Include encryptedContent for backward compatibility and client-side decryption
-                encryptedContent: walrusEntry.content,
-              };
-            }
-          } catch (error) {
-            console.error(`Failed to retrieve Walrus entry ${entry.id}:`, error);
-            // Continue with basic entry data if Walrus retrieval fails
-          }
-        }
-
-        // For PostgreSQL entries or if Walrus retrieval failed, return basic entry
-        return {
-          ...entry,
-          adminAddress,
-          method: 'crypto-js', // Default to crypto-js for PostgreSQL entries
-          encryptedContent: entry.encryptedContent || '', // Include encryptedContent if available
-        };
-      })
-    );
+    // OPTIMIZATION: Return only metadata from PostgreSQL without fetching from Walrus
+    // Full entry content (encryptedContent) will be loaded on-demand when:
+    // 1. User clicks on an entry (via GET /api/entries/[id])
+    // 2. User generates AI summary (entries loaded separately for that week)
+    // This dramatically improves performance when loading the entries list
+    const entriesWithMetadata = user.entries.map((entry) => ({
+      id: entry.id,
+      date: entry.date.toISOString(), // Convert Date to ISO string for consistency
+      wordCount: entry.wordCount,
+      signature: entry.signature,
+      contentHash: entry.contentHash,
+      walrusBlobId: entry.walrusBlobId,
+      walrusTxDigest: entry.walrusTxDigest,
+      storageType: entry.storageType,
+      adminAddress,
+      // Don't include encryptedContent here - load it on-demand via GET /api/entries/[id]
+      // This avoids slow Walrus network calls for every entry in the list
+      encryptedContent: undefined,
+    }));
 
     return NextResponse.json({
       entries: entriesWithMetadata,

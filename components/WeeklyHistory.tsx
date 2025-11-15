@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   useCurrentAccount,
   useCurrentWallet,
@@ -25,7 +25,7 @@ interface Entry {
   id: string;
   date: string;
   wordCount: number;
-  encryptedContent: string;
+  encryptedContent?: string; // Optional - loaded on-demand for performance
   walrusTxDigest?: string | null; // Transaction digest for blockchain verification
   walrusBlobId?: string | null; // Blob ID for fallback
   storageType?: string; // Storage type
@@ -141,9 +141,38 @@ export function WeeklyHistory({
   const { user, updateBalance, refreshUser } = useUserStore();
   const balance = user?.coinsBalance ?? userBalance;
   const weekGroups = groupEntriesByWeek(entries);
-  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(
-    new Set(weekGroups.find((w) => w.isCurrentWeek)?.weekLabel ? [weekGroups[0].weekLabel] : [])
-  );
+
+  // Автоматически разворачиваем текущую неделю только при первой загрузке
+  const currentWeek = weekGroups.find((w) => w.isCurrentWeek);
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    if (currentWeek) {
+      initial.add(currentWeek.weekLabel);
+    }
+    return initial;
+  });
+
+  // Флаг для отслеживания, была ли текущая неделя развернута автоматически
+  // Инициализируем с текущей неделей, если она есть
+  const autoExpandedRef = useRef<Set<string>>(new Set(currentWeek ? [currentWeek.weekLabel] : []));
+
+  // Обновляем развернутые недели только при первой загрузке или когда появляется новая текущая неделя
+  // НЕ разворачиваем автоматически, если пользователь уже свернул неделю
+  useEffect(() => {
+    const currentWeek = weekGroups.find((w) => w.isCurrentWeek);
+    if (currentWeek) {
+      // Если текущая неделя еще не была автоматически развернута, разворачиваем её
+      // Это происходит только при первой загрузке или когда появляется новая текущая неделя
+      if (!autoExpandedRef.current.has(currentWeek.weekLabel)) {
+        setExpandedWeeks((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(currentWeek.weekLabel);
+          return newSet;
+        });
+        autoExpandedRef.current.add(currentWeek.weekLabel);
+      }
+    }
+  }, [weekGroups]);
   const [generatingWeek, setGeneratingWeek] = useState<string | null>(null);
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
 
@@ -176,9 +205,52 @@ export function WeeklyHistory({
       throw new Error('Wallet not connected');
     }
 
-    const decryptedEntries = await Promise.all(
+    // Load entries with encryptedContent if they don't have it (lazy loading)
+    const entriesWithContent = await Promise.all(
       weekEntries.map(async (entry) => {
+        // If entry already has encryptedContent, use it
+        if (entry.encryptedContent) {
+          return entry;
+        }
+
+        // Otherwise, load full entry from API
         try {
+          const response = await fetch(`/api/entries/${entry.id}`);
+          if (!response.ok) {
+            return null;
+          }
+          const data = await response.json();
+          if (data.success && data.entry) {
+            return {
+              ...entry,
+              encryptedContent: data.entry.encryptedContent,
+              method: data.entry.method,
+              sealEncryptedObject: data.entry.sealEncryptedObject,
+              sealKey: data.entry.sealKey,
+              sealPackageId: data.entry.sealPackageId,
+              sealId: data.entry.sealId,
+              sealThreshold: data.entry.sealThreshold,
+            };
+          }
+          return null;
+        } catch (error) {
+          console.error(`Failed to load entry ${entry.id}:`, error);
+          return null;
+        }
+      })
+    );
+
+    // Filter out null entries (failed to load)
+    const loadedEntries = entriesWithContent.filter((entry) => entry !== null) as Entry[];
+
+    const decryptedEntries = await Promise.all(
+      loadedEntries.map(async (entry) => {
+        try {
+          // Entry must have encryptedContent at this point
+          if (!entry.encryptedContent) {
+            return null;
+          }
+
           const encryptionMethod = entry.method || 'crypto-js';
 
           if (encryptionMethod === 'seal') {
@@ -260,7 +332,7 @@ export function WeeklyHistory({
             */
           } else {
             // Crypto-js encrypted entry - decrypt on client
-            if (!encryptionKey) {
+            if (!encryptionKey || !entry.encryptedContent) {
               return null;
             }
 
@@ -282,11 +354,15 @@ export function WeeklyHistory({
     );
 
     // Filter out null entries (failed decryption)
-    const validEntries = decryptedEntries.filter((entry) => entry !== null) as Array<{
-      date: string;
-      content: string;
-      wordCount: number;
-    }>;
+    const validEntries = decryptedEntries.filter(
+      (
+        entry
+      ): entry is {
+        date: string;
+        content: string;
+        wordCount: number;
+      } => entry !== null
+    );
 
     return validEntries;
   };

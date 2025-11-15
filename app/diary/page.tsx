@@ -207,15 +207,50 @@ export default function Diary() {
       setShowSuccessModal(true);
       setContent('');
 
-      // Reload data - both user and entries
+      // OPTIMIZATION: Optimistically add the new entry to the list immediately
+      // This makes the UI feel instant - entry appears right away
+      if (data.entry) {
+        const entryDate = data.entry.date
+          ? typeof data.entry.date === 'string'
+            ? data.entry.date
+            : new Date(data.entry.date).toISOString()
+          : new Date().toISOString();
+        const newEntry = {
+          id: data.entry.id,
+          date: entryDate,
+          wordCount: content.split(/\s+/).filter(Boolean).length,
+          signature: data.entry.signature || '',
+          contentHash: data.entry.contentHash || '',
+          walrusBlobId: data.entry.blobId || null,
+          walrusTxDigest: data.entry.txDigest || null,
+          storageType: data.entry.storageType || 'walrus',
+          adminAddress: data.entry.adminAddress || null,
+          // encryptedContent is not included - will be loaded on-demand when clicked
+          encryptedContent: undefined,
+        };
+        setEntries((prevEntries) => [newEntry, ...prevEntries]);
+      }
+
+      // Refresh user data (balance, streak, etc.)
       if (address) {
         await refreshUser(address);
       }
-      const entriesRes = await fetch(`/api/entries?userAddress=${address}&t=${Date.now()}`, {
-        cache: 'no-store',
-      });
-      const entriesData = await entriesRes.json();
-      setEntries(entriesData.entries || []);
+
+      // Reload entries in background to ensure we have the latest data
+      // This is done after optimistic update so UI feels instant
+      try {
+        const entriesRes = await fetch(`/api/entries?userAddress=${address}&t=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        const entriesData = await entriesRes.json();
+        // Only update if we got valid data (don't overwrite with empty array on error)
+        if (entriesData.entries && entriesData.entries.length > 0) {
+          setEntries(entriesData.entries || []);
+        }
+      } catch (error) {
+        // Silently fail - we already have optimistic update
+        console.error('Failed to reload entries:', error);
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to save entry');
     } finally {
@@ -254,6 +289,17 @@ export default function Diary() {
     ? new Date(userData.lastEntryDate).toDateString() === new Date().toDateString()
     : false;
 
+  // Check if entry exists for today in entries list
+  const todayEntry = entries.find((entry) => {
+    const entryDate = new Date(entry.date);
+    const today = new Date();
+    return (
+      entryDate.getDate() === today.getDate() &&
+      entryDate.getMonth() === today.getMonth() &&
+      entryDate.getFullYear() === today.getFullYear()
+    );
+  });
+
   return (
     <>
       <div className={`h-screen text-white flex overflow-hidden ${getBackgroundClass()}`}>
@@ -285,7 +331,21 @@ export default function Diary() {
           ) : selectedEntry ? (
             <EntryViewer entry={selectedEntry} onBack={() => setSelectedEntry(null)} />
           ) : (
-            <div className="h-full pt-4">
+            <div className="h-full pt-4 relative">
+              {/* Loading Overlay - блокирует экран при сохранении */}
+              {saving && (
+                <div className="absolute inset-0 bg-bg-dark/90 backdrop-blur-sm z-50 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="mb-4">
+                      <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
+                    </div>
+                    <div className="font-mono text-lg text-primary mb-2 animate-pulse">
+                      Saving Entry...
+                    </div>
+                    <div className="font-mono text-sm text-primary/60">Encrypting & Signing</div>
+                  </div>
+                </div>
+              )}
               <div className="w-full px-8">
                 <div className="mb-6 flex items-start gap-6 pr-40">
                   <div>
@@ -310,24 +370,55 @@ export default function Diary() {
                   )}
                 </div>
 
-                <TextEditor
-                  value={content}
-                  onChange={setContent}
-                  placeholder="How was your day? Write your thoughts here..."
-                  wordCount={content.split(/\s+/).filter(Boolean).length}
-                  sealEncryptionEnabled={useSealEncryption}
-                  onSealEncryptionChange={setUseSealEncryption}
-                  isSealAvailable={isSealAvailable()}
-                  actionButton={
-                    <button
-                      onClick={handleSave}
-                      disabled={!content.trim() || saving}
-                      className="btn-primary px-6 py-2 rounded-lg font-mono text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {saving ? '[SAVING...]' : '[SAVE & SIGN]'}
-                    </button>
-                  }
-                />
+                {/* Show message if entry already exists for today */}
+                {todayEntry ? (
+                  <div className="bg-bg-card border border-primary/30 rounded-xl p-8 text-center">
+                    <div className="mb-4">
+                      <div className="text-6xl mb-4">✅</div>
+                      <h2 className="text-2xl font-display font-bold text-primary mb-2">
+                        Entry Already Created
+                      </h2>
+                      <p className="text-primary/60 font-mono text-sm mb-6">
+                        You&apos;ve already written your diary entry for today.
+                      </p>
+                      <div className="flex items-center justify-center gap-4 text-sm text-primary/50 font-mono mb-6">
+                        <span>{todayEntry.wordCount} words</span>
+                        <span>•</span>
+                        <span>
+                          {new Date(todayEntry.date).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleEntryClick(todayEntry)}
+                        className="btn-primary px-6 py-3 rounded-lg font-mono text-sm font-semibold hover:shadow-glow-cyan transition-all"
+                      >
+                        [VIEW TODAY&apos;S ENTRY]
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <TextEditor
+                    value={content}
+                    onChange={setContent}
+                    placeholder="How was your day? Write your thoughts here..."
+                    wordCount={content.split(/\s+/).filter(Boolean).length}
+                    sealEncryptionEnabled={useSealEncryption}
+                    onSealEncryptionChange={setUseSealEncryption}
+                    isSealAvailable={isSealAvailable()}
+                    actionButton={
+                      <button
+                        onClick={handleSave}
+                        disabled={!content.trim() || saving}
+                        className="btn-primary px-6 py-2 rounded-lg font-mono text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {saving ? '[SAVING...]' : '[SAVE & SIGN]'}
+                      </button>
+                    }
+                  />
+                )}
               </div>
             </div>
           )}

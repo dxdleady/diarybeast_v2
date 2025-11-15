@@ -26,10 +26,13 @@ export default function Profile() {
   async function loadUserData() {
     if (!address) return;
 
+    setLoading(true);
     try {
+      // OPTIMIZATION: Use cache-busting timestamp and parallel requests
+      const timestamp = Date.now();
       const [userRes, entriesRes] = await Promise.all([
-        fetch(`/api/user/${address}`),
-        fetch(`/api/entries?userAddress=${address}`),
+        fetch(`/api/user/${address}?t=${timestamp}`, { cache: 'no-store' }),
+        fetch(`/api/entries?userAddress=${address}&t=${timestamp}`, { cache: 'no-store' }),
       ]);
 
       const userData = await userRes.json();
